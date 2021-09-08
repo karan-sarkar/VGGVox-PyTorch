@@ -1,3 +1,36 @@
+
+# Useful Papers
+SpecAugment: A New Data Augmentation Method for Automatic Speech Recognition
+https://arxiv.org/pdf/1904.08779.pdf 
+https://ai.googleblog.com/2019/04/specaugment-new-data-augmentation.html
+
+
+Classical Approaches to Speaker Recognition
+Speaker Recognition: A Tutorial
+https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=628714
+
+
+Deep Speaker Recognition
+
+Speaker Recognition Based on Deep Learning: An Overview
+https://arxiv.org/pdf/2012.00931.pdf
+
+VoxCeleb2: Deep Speaker Recognition
+https://arxiv.org/pdf/1806.05622.pdf
+
+Deep Speaker: an End-to-End Neural Speaker Embedding Syste
+https://arxiv.org/pdf/1705.02304.pdf
+http://research.baidu.com/Blog/index-view?id=98
+
+Few-Shot Learning
+
+Learning to Compare: Relation Network for Few-Shot Learni
+https://openaccess.thecvf.com/content_cvpr_2018/papers/Sung_Learning_to_Compare_CVPR_2018_paper.pdf
+
+Prototypical Networks for Few-shot Learning
+https://arxiv.org/pdf/1703.05175.pdf
+
+
 # VGGVox-PyTorch
 Implementing VGGVox for VoxCeleb1 dataset in PyTorch.
 
