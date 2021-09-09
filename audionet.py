@@ -21,12 +21,16 @@ class AudioNet(nn.Module):
             ('conv1', nn.Conv2d(in_channels=1, out_channels=96, kernel_size=(7,7), stride=(2,2), padding=1)),
             ('bn1', nn.BatchNorm2d(96, momentum=0.5)),
             ('relu1', nn.ReLU())]))
+        
+        self.extract1 = nn.Conv2d(in_channels=96, out_channels=96, kernel_size=(1,1), stride=(1,1), padding=0)
             
         self.block2=nn.Sequential(OrderedDict([           
             ('mpool1', nn.MaxPool2d(kernel_size=(3,3), stride=(2,2))),
             ('conv2', nn.Conv2d(in_channels=96, out_channels=256, kernel_size=(5,5), stride=(2,2), padding=1)),
             ('bn2', nn.BatchNorm2d(256, momentum=0.5)),
             ('relu2', nn.ReLU())]))
+            
+        self.extract2 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1,1), stride=(1,1), padding=0)
           
         self.block3=nn.Sequential(OrderedDict([              
             ('mpool2', nn.MaxPool2d(kernel_size=(3,3), stride=(2,2))),
@@ -39,13 +43,15 @@ class AudioNet(nn.Module):
             ('conv5', nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3,3), stride=(1,1), padding=1)),
             ('bn5', nn.BatchNorm2d(256, momentum=0.5)),
             ('relu5', nn.ReLU())]))
+        
+        self.extract3 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(1,1), stride=(1,1), padding=0)        
          
         self.block4=nn.Sequential(OrderedDict([         
             ('mpool5', nn.MaxPool2d(kernel_size=(5,3), stride=(3,2))),
             ('fc6', nn.Conv2d(in_channels=256, out_channels=4096, kernel_size=(9,1), stride=(1,1))),
             ('bn6', nn.BatchNorm2d(4096, momentum=0.5)),
-            ('relu6', nn.ReLU())]))
-            
+            ('relu6', nn.ReLU())]))  
+         
         self.block5=nn.Sequential(OrderedDict([       
             ('apool6', nn.AdaptiveAvgPool2d((1,1))),
             ('flatten', nn.Flatten())]))
@@ -58,15 +64,25 @@ class AudioNet(nn.Module):
     
     def forward(self, inp):
         inp=self.block1(inp)
-        print(inp.shape)
+        feat1 = self.extract1(inp).relu().mean(-1)
+        feat1 = torch.flatten(feat1, start_dim=1)
+        
         inp=self.block2(inp)
-        print(inp.shape)
+        feat2 = self.extract2(inp).relu().mean(-1)
+        feat2 = torch.flatten(feat2, start_dim=1)
+
+        
         inp=self.block3(inp)
-        print(inp.shape)
+        feat3 = self.extract3(inp).relu().mean(-1)
+        feat3 = torch.flatten(feat3, start_dim=1)
+        
+        
         inp=self.block4(inp)
-        print(inp.shape)
         inp=self.block5(inp)
+        
+        inp = torch.cat([inp, feat1, feat2, feat3], 1)
         print(inp.shape)
+        
         inp=self.classifier(inp)
         return inp
 
