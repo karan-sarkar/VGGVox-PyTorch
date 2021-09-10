@@ -18,28 +18,28 @@ class AudioNet(nn.Module):
         super(AudioNet, self).__init__()
         self.n_classes=n_classes
         self.features=nn.Sequential(OrderedDict([
-            ('conv1', nn.Conv1d(in_channels=512, out_channels=2048, kernel_size=(7), stride=(2), padding=1)),
-            ('bn1', nn.BatchNorm1d(2048, momentum=0.5)),
+            ('conv1', nn.Conv2d(in_channels=1, out_channels=96, kernel_size=(7,7), stride=(2,2), padding=1)),
+            ('bn1', nn.BatchNorm2d(96, momentum=0.5)),
             ('relu1', nn.ReLU()),
-            ('mpool1', nn.MaxPool1d(kernel_size=(3), stride=(2))),
-            ('conv2', nn.Conv1d(in_channels=2048, out_channels=2048, kernel_size=(5), stride=(2), padding=1)),
-            ('bn2', nn.BatchNorm1d(2048, momentum=0.5)),
+            ('mpool1', nn.MaxPool2d(kernel_size=(3,3), stride=(2,2))),
+            ('conv2', nn.Conv2d(in_channels=96, out_channels=256, kernel_size=(5,5), stride=(2,2), padding=1)),
+            ('bn2', nn.BatchNorm2d(256, momentum=0.5)),
             ('relu2', nn.ReLU()),
-            ('mpool2', nn.MaxPool1d(kernel_size=(3), stride=(2))),
-            ('conv3', nn.Conv1d(in_channels=2048, out_channels=4096, kernel_size=(3), stride=(1), padding=1)),
-            ('bn3', nn.BatchNorm1d(4096, momentum=0.5)),
+            ('mpool2', nn.MaxPool2d(kernel_size=(3,3), stride=(2,2))),
+            ('conv3', nn.Conv2d(in_channels=256, out_channels=384, kernel_size=(3,3), stride=(1,1), padding=1)),
+            ('bn3', nn.BatchNorm2d(384, momentum=0.5)),
             ('relu3', nn.ReLU()),
-            ('conv4', nn.Conv1d(in_channels=4096, out_channels=2048, kernel_size=(3), stride=(1), padding=1)),
-            ('bn4', nn.BatchNorm1d(2048, momentum=0.5)),
+            ('conv4', nn.Conv2d(in_channels=384, out_channels=256, kernel_size=(3,3), stride=(1,1), padding=1)),
+            ('bn4', nn.BatchNorm2d(256, momentum=0.5)),
             ('relu4', nn.ReLU()),
-            ('conv5', nn.Conv1d(in_channels=2048, out_channels=2048, kernel_size=(3), stride=(1), padding=1)),
-            ('bn5', nn.BatchNorm1d(2048, momentum=0.5)),
+            ('conv5', nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3,3), stride=(1,1), padding=1)),
+            ('bn5', nn.BatchNorm2d(256, momentum=0.5)),
             ('relu5', nn.ReLU()),
-            ('mpool5', nn.MaxPool1d(kernel_size=(3), stride=(2))),
-            ('fc6', nn.Conv1d(in_channels=2048, out_channels=4096, kernel_size=(1), stride=(1,1))),
-            ('bn6', nn.BatchNorm1d(4096, momentum=0.5)),
+            ('mpool5', nn.MaxPool2d(kernel_size=(5,3), stride=(3,2))),
+            ('fc6', nn.Conv2d(in_channels=256, out_channels=4096, kernel_size=(9,1), stride=(1,1))),
+            ('bn6', nn.BatchNorm2d(4096, momentum=0.5)),
             ('relu6', nn.ReLU()),
-            ('apool6', nn.AdaptiveAvgPool1d((1))),
+            ('apool6', nn.AdaptiveAvgPool2d((1,1))),
             ('flatten', nn.Flatten())]))
             
         self.classifier=nn.Sequential(OrderedDict([
@@ -47,6 +47,11 @@ class AudioNet(nn.Module):
             #('drop1', nn.Dropout()),
             ('relu7', nn.ReLU()),
             ('fc8', nn.Linear(1024, n_classes))]))
+    
+    def forward(self, inp):
+        inp=self.features(inp)
+        #inp=inp.view(inp.size()[0],-1)
+        inp=self.classifier(inp)
     
     def forward(self, inp):
         inp = inp.squeeze()

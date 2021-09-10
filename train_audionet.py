@@ -24,6 +24,7 @@ import signal_utils as sig
 from scipy.io import wavfile
 from audionet import AudioNet
 import argparse
+import random
 
 
 
@@ -163,6 +164,15 @@ if __name__=="__main__":
             optimizer.zero_grad()
             audio = audio.to(device)
             labels = labels.to(device)
+            
+            for _ in range(3):
+                start = random.randint(0,300)
+                length = random.randint(0, min(300 - start, 20))
+                audio[..., start:start+length]  = 0
+            
+            
+            
+            
             if counter==32:
                 random_subset=audio
             outputs = model(audio)
