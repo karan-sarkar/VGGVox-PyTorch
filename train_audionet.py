@@ -164,11 +164,11 @@ if __name__=="__main__":
             optimizer.zero_grad()
             audio = audio.to(device)
             labels = labels.to(device)
-            
+            augmented = audio.clone()
             for _ in range(3):
                 start = random.randint(0,300)
                 length = random.randint(0, min(300 - start, 20))
-                audio[..., start:start+length]  = 0
+                augmented[..., start:start+length]  = 0
             
             
             
@@ -176,7 +176,8 @@ if __name__=="__main__":
             if counter==32:
                 random_subset=audio
             outputs = model(audio)
-            loss = loss_func(outputs, labels)
+            aug_out = model(augmented)
+            loss = loss_func(outputs, labels) + loss_func(aug_out, labels)
             running_loss+=loss
             corr1, corr5=accuracy(outputs, labels, topk=(1,5))
             top1+=corr1
@@ -203,3 +204,4 @@ if __name__=="__main__":
     torch.save(model.state_dict(), PATH)
     model.eval()
     acc1=test(model, Dataloaders['test'])
+

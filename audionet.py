@@ -54,7 +54,6 @@ class AudioNet(nn.Module):
         inp=self.classifier(inp)
     
     def forward(self, inp):
-        inp = inp.squeeze()
         inp=self.features(inp)
         #inp=inp.view(inp.size()[0],-1)
         inp=self.classifier(inp)
