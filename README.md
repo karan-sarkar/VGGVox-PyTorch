@@ -65,6 +65,7 @@ python3 train.py --dir ./data/
  - [VGGVox](https://github.com/a-nagrani/VGGVox)
  - linhdvu14's [vggvox-speaker-identification](https://github.com/linhdvu14/vggvox-speaker-identification)
  - jameslyons's [python_speech_features](https://github.com/jameslyons/python_speech_features)
+ - Easy few shot learning [link](https://github.com/sicara/easy-few-shot-learning)
  
  ```bibtex
 @InProceedings{Nagrani17,
@@ -80,6 +81,13 @@ python3 train.py --dir ./data/
   title        = "VoxCeleb2: Deep Speaker Recognition",
   booktitle    = "INTERSPEECH",
   year         = "2018",
+}
+
+@software{Bennequin_easyfsl,
+author = {Bennequin, Etienne},
+license = {MIT},
+title = {{easyfsl}},
+url = {https://github.com/sicara/easy-few-shot-learning}
 }
 ```
 
