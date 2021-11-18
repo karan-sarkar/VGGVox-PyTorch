@@ -198,7 +198,7 @@ if __name__=="__main__":
     print(device)
 
     backbone=AudioNet(N_WAY)
-    model = RelationNetworks(backbone=backbone)
+    model = RelationNetworks(backbone)
     model.to(device)
     
     train(model, Dataloaders, device)
