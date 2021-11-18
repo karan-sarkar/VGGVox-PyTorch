@@ -198,7 +198,7 @@ if __name__=="__main__":
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-
+    accuracy = accuracy.to(device)
     backbone=AudioNet(N_WAY, mode='fe')
     model = RelationNetworks(backbone)
     model.to(device)
