@@ -36,7 +36,6 @@ N_TRAINING_TASKS = 100
 N_VALIDATION_TASKS = 100
 N_EVALUATION_TASKS = 100
 
-accuracy = torchmetrics.Accuracy()
 
 # def accuracy(output, target, topk=(1,)):
 #     """Computes the accuracy over the k top predictions for the specified values of k"""
@@ -198,7 +197,8 @@ if __name__=="__main__":
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-    accuracy = accuracy.to(device)
+    accuracy = torchmetrics.Accuracy().to(device)
+    
     backbone=AudioNet(N_WAY, mode='fe')
     model = RelationNetworks(backbone)
     model.to(device)
