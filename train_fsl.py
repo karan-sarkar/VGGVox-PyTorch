@@ -73,7 +73,7 @@ N_EVALUATION_TASKS = 100
 #     ).sum().item(), len(query_labels)
 
 
-def evaluate(model: AbstractMetaLearner, data_loaders: List[DataLoader]):
+def evaluate(model: AbstractMetaLearner, data_loaders: List[DataLoader], device):
     # We'll count everything and compute the ratio at the end
     total_predictions = 0
     correct_predictions = 0
@@ -81,6 +81,7 @@ def evaluate(model: AbstractMetaLearner, data_loaders: List[DataLoader]):
     # eval mode affects the behaviour of some layers (such as batch normalization or dropout)
     # no_grad() tells torch not to keep in memory the whole computational graph (it's more lightweight this way)
     model.eval()
+    accuracy = torchmetrics.Accuracy().to(device)
     accuracy.reset()
     for data_loader in data_loaders:
         with torch.no_grad():
@@ -108,6 +109,7 @@ def ppdf(df_F):
     return df_F
 
 def train(model: AbstractMetaLearner, Dataloaders: Dict, device):
+    accuracy = torchmetrics.Accuracy().to(device)
     optimizer=SGD(model.parameters(), lr=LR, momentum=0.99, weight_decay=5e-4)
     scheduler=lr_scheduler.StepLR(optimizer, step_size=5, gamma=1/1.17)
     #Save models after accuracy crosses 75
@@ -150,7 +152,7 @@ def train(model: AbstractMetaLearner, Dataloaders: Dict, device):
             
         model.eval()
         with torch.no_grad():
-            val_acc = evaluate(model, Dataloaders['val'])
+            val_acc = evaluate(model, Dataloaders['val'], device)
             print('Validation accuracy: %.2f'%val_acc)
             if val_acc>best_acc:
                 best_acc=val_acc
@@ -197,7 +199,6 @@ if __name__=="__main__":
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-    accuracy = torchmetrics.Accuracy().to(device)
     
     backbone=AudioNet(N_WAY, mode='fe')
     model = RelationNetworks(backbone)
@@ -211,4 +212,5 @@ if __name__=="__main__":
     PATH = os.path.join(MODEL_DIR,"VGGM_F.pth")
     torch.save(model.state_dict(), PATH)
     model.eval()
-    acc1=evaluate(model, Dataloaders['test'])
+    print('Running test...')
+    acc1=evaluate(model, Dataloaders['test'], device)
