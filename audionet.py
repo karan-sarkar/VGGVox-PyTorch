@@ -30,18 +30,18 @@ class AudioNet(nn.Module):
                 ('conv3', nn.Conv2d(in_channels=256, out_channels=384, kernel_size=(3,3), stride=(1,1), padding=1)),
                 ('bn3', nn.BatchNorm2d(384, momentum=0.5)),
                 ('relu3', nn.ReLU()),
-                # ('conv4', nn.Conv2d(in_channels=384, out_channels=256, kernel_size=(3,3), stride=(1,1), padding=1)),
-                # ('bn4', nn.BatchNorm2d(256, momentum=0.5)),
-                # ('relu4', nn.ReLU()),
-                # ('conv5', nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3,3), stride=(1,1), padding=1)),
-                # ('bn5', nn.BatchNorm2d(256, momentum=0.5)),
-                # ('relu5', nn.ReLU()),
-                # ('mpool5', nn.MaxPool2d(kernel_size=(5,3), stride=(3,2))),
-                # ('fc6', nn.Conv2d(in_channels=256, out_channels=4096, kernel_size=(9,1), stride=(1,1))),
-                # ('bn6', nn.BatchNorm2d(4096, momentum=0.5)),
-                # ('relu6', nn.ReLU()),
-                # ('apool6', nn.AdaptiveAvgPool2d((1,1))),
-                # ('flatten', nn.Flatten()),
+                ('conv4', nn.Conv2d(in_channels=384, out_channels=256, kernel_size=(3,3), stride=(1,1), padding=1)),
+                ('bn4', nn.BatchNorm2d(256, momentum=0.5)),
+                ('relu4', nn.ReLU()),
+                ('conv5', nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3,3), stride=(1,1), padding=1)),
+                ('bn5', nn.BatchNorm2d(256, momentum=0.5)),
+                ('relu5', nn.ReLU()),
+                ('mpool5', nn.MaxPool2d(kernel_size=(5,3), stride=(3,2))),
+                ('fc6', nn.Conv2d(in_channels=256, out_channels=4096, kernel_size=(9,1), stride=(1,1))),
+                ('bn6', nn.BatchNorm2d(4096, momentum=0.5)),
+                ('relu6', nn.ReLU()),
+                ('apool6', nn.AdaptiveAvgPool2d((1,1))),
+                ('flatten', nn.Flatten()),
             ])
         )
             
@@ -50,11 +50,6 @@ class AudioNet(nn.Module):
             #('drop1', nn.Dropout()),
             ('relu7', nn.ReLU()),
             ('fc8', nn.Linear(1024, n_classes))]))
-    
-    def forward(self, inp):
-        inp=self.features(inp)
-        #inp=inp.view(inp.size()[0],-1)
-        inp=self.classifier(inp)
     
     def forward(self, inp):
         inp=self.features(inp)
