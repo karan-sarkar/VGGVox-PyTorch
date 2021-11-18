@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import argparse
@@ -21,7 +21,7 @@ from audionet import AudioNet
 # if 'easyfsl.utils.compute_backbone_output_shape' in sys.modules:
 #     del sys.modules['easyfsl.utils']
 sys.modules['easyfsl.utils'].compute_backbone_output_shape = __import__('relation_net_util').compute_backbone_output_shape
-from easyfsl.methods import RelationNetworks
+from easyfsl.methods import RelationNetworks, AbstractMetaLearner
 
 LR=0.01
 B_SIZE=100
@@ -54,27 +54,27 @@ accuracy = torchmetrics.Accuracy()
 #             res.append((correct_k.mul(100.0 / batch_size)).item())
 #         return res
 
-def evaluate_on_one_task(
-    model,
-    support_images: torch.Tensor,
-    support_labels: torch.Tensor,
-    query_images: torch.Tensor,
-    query_labels: torch.Tensor,
-) -> Tuple[int, int]:
-    """
-    Returns the number of correct predictions of query labels, and the total number of predictions.
-    """
-    output = model(support_images, support_labels, query_images).detach().data
-    return (
-        torch.max(
-            output,
-            1,
-        )[1]
-        == query_labels
-    ).sum().item(), len(query_labels)
+# def evaluate_on_one_task(
+#     model,
+#     support_images: torch.Tensor,
+#     support_labels: torch.Tensor,
+#     query_images: torch.Tensor,
+#     query_labels: torch.Tensor,
+# ) -> Tuple[int, int]:
+#     """
+#     Returns the number of correct predictions of query labels, and the total number of predictions.
+#     """
+#     output = model(support_images, support_labels, query_images).detach().data
+#     return (
+#         torch.max(
+#             output,
+#             1,
+#         )[1]
+#         == query_labels
+#     ).sum().item(), len(query_labels)
 
 
-def evaluate(model, data_loader: DataLoader):
+def evaluate(model: AbstractMetaLearner, data_loaders: List[DataLoader]):
     # We'll count everything and compute the ratio at the end
     total_predictions = 0
     correct_predictions = 0
@@ -83,20 +83,21 @@ def evaluate(model, data_loader: DataLoader):
     # no_grad() tells torch not to keep in memory the whole computational graph (it's more lightweight this way)
     model.eval()
     accuracy.reset()
-    with torch.no_grad():
-        loop = tqdm(enumerate(data_loader), total=len(data_loader))
-        for episode_index, (
-            support_images,
-            support_labels,
-            query_images,
-            query_labels,
-            class_ids,
-        ) in loop:
+    for data_loader in data_loaders:
+        with torch.no_grad():
+            loop = tqdm(enumerate(data_loader), total=len(data_loader))
+            for episode_index, (
+                support_images,
+                support_labels,
+                query_images,
+                query_labels,
+                class_ids,
+            ) in loop:
+                model.process_support_set(support_images, support_labels)
+                output = model(query_images)
+                episode_acc = accuracy(output, query_labels)
 
-            output = model(support_images, support_labels, query_images)
-            episode_acc = accuracy(output, query_labels)
-
-            loop.set_postfix(acc=episode_acc)
+                loop.set_postfix(acc=episode_acc)
 
     return accuracy.compute()
     
@@ -107,8 +108,7 @@ def ppdf(df_F):
     df_F['Path']="wav/"+df_F['Path']
     return df_F
 
-def train(model, Dataloaders: Dict, device):
-    loss_func=nn.CrossEntropyLoss()
+def train(model: AbstractMetaLearner, Dataloaders: Dict, device):
     optimizer=SGD(model.parameters(), lr=LR, momentum=0.99, weight_decay=5e-4)
     scheduler=lr_scheduler.StepLR(optimizer, step_size=5, gamma=1/1.17)
     #Save models after accuracy crosses 75
@@ -136,11 +136,13 @@ def train(model, Dataloaders: Dict, device):
             query_images = query_images.to(device)
             query_labels = query_labels.to(device)
             
-            outputs = model(support_images, support_labels, query_images)
+            model.process_support_set(support_images, support_labels)
+            
+            outputs = model(query_images)
             
             episode_acc = accuracy(outputs, query_labels)
             
-            loss = loss_func(outputs, query_labels)
+            loss = model.compute_loss(outputs, query_labels)
             running_loss+=loss
             
             loss.backward()
