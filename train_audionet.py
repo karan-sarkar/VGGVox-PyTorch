@@ -169,7 +169,7 @@ if __name__=="__main__":
                 start = random.randint(0,300)
                 length = random.randint(0, min(300 - start, 20))
                 augmented[..., start:start+length]  = 0
-            for _ in range(5):
+            for _ in range(10):
                 start = random.randint(0,512)
                 length = random.randint(0, min(512 - start, 20))
                 augmented[..., start:start+length, :]  = 0

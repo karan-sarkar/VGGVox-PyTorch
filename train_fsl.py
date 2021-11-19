@@ -29,22 +29,22 @@ class Experiment(object):
     
 
     def __init__(self, 
-                batch_size: int = 1,
+                batch_size: int = 128,
                 num_workers = 2,
-                num_epochs = 1,
-                num_way = 5,
-                num_shot = 5,
-                num_query = 10,
+                num_epochs = 10000,
+                num_way = 10,
+                num_shot = 1,
+                num_query = 3,
                 num_train_tasks = 100,
                 num_eval_tasks = 100,
                 num_val_tasks = 100,
-                device='cpu',
+                device='cuda',
         ) -> None:
         super().__init__()
         self.LOCAL_DATA_DIR=os.path.join(os.path.dirname(__file__), "data")
         self.MODEL_DIR=os.path.join(os.path.dirname(__file__), "models")
         
-        self.LR=0.01
+        self.LR=0.001
         self.B_SIZE=batch_size
         self.N_EPOCHS=num_epochs
         
@@ -79,6 +79,13 @@ class Experiment(object):
                     query_labels,
                     class_ids,
                 ) in loop:
+                    #print(support_images.shape, query_images.shape)
+                    #print(support_labels.shape, query_labels.shape)
+                    support_images = support_images.to(self.device)
+                    query_images = query_images.to(self.device)
+                    support_labels = support_labels.to(self.device)
+                    query_labels = query_labels.to(self.device)
+
                     model.process_support_set(support_images, support_labels)
                     output = model(query_images)
                     episode_acc = accuracy(output, query_labels)
@@ -105,7 +112,7 @@ class Experiment(object):
         print("Start Training")
         for epoch in range(self.N_EPOCHS):
             model.train()
-            running_loss=0.0
+            running_loss=[]
             # random_subset=None
             loop=tqdm(Dataloaders['train'])
             loop.set_description(f'Epoch [{epoch+1}/{self.N_EPOCHS}]')
@@ -130,15 +137,15 @@ class Experiment(object):
                 episode_acc = accuracy(outputs, query_labels)
                 
                 loss = model.compute_loss(outputs, query_labels)
-                running_loss+=loss
+                running_loss.append(loss.item())
                 
                 loss.backward()
                 optimizer.step()
-                loop.set_postfix(loss=running_loss.item(), episode_acc=episode_acc.item(), avg_acc=accuracy.compute().item())
+                loop.set_postfix(loss=sum(running_loss)/len(running_loss), episode_acc=episode_acc.item(), avg_acc=accuracy.compute().item())
                 
             model.eval()
             with torch.no_grad():
-                val_acc = self.evaluate(model, Dataloaders['val'])
+                val_acc = self.evaluate(model, Dataloaders['test'])
                 print('Validation accuracy: %.2f'%val_acc)
                 if val_acc>best_acc:
                     best_acc=val_acc
@@ -170,11 +177,12 @@ class Experiment(object):
             "val":[TaskSampler(i, n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_VALIDATION_TASKS) for i in Datasets['val']],
             "test":TaskSampler(Datasets['test'], n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_EVALUATION_TASKS),
         }
-        
+        print(samplers['test'].items_per_label)
+ 
         Dataloaders={}
         Dataloaders['train']=DataLoader(Datasets['train'],num_workers=self.NUM_WORKERS, batch_sampler=samplers['train'], collate_fn=samplers['train'].episodic_collate_fn)
-        Dataloaders['val']=[DataLoader(i, num_workers=self.NUM_WORKERS, batch_sampler=j, collate_fn=j.episodic_collate_fn) for i, j in zip(Datasets['val'], samplers['val'])]
-        Dataloaders['test']=[DataLoader(Datasets['test'], num_workers=self.NUM_WORKERS, batch_sampler=samplers['test'], collate_fn=samplers['test'].episodic_collate_fn)]
+        Dataloaders['val']=[DataLoader(i, num_workers=self.NUM_WORKERS, batch_sampler = j, shuffle=False, collate_fn=j.episodic_collate_fn) for i, j in zip(Datasets['val'], samplers['val'])]
+        Dataloaders['test']=[DataLoader(Datasets['test'], num_workers=self.NUM_WORKERS, batch_sampler=samplers['test'], shuffle=False, collate_fn=samplers['test'].episodic_collate_fn)]
         return Dataloaders
 
 def get_model(

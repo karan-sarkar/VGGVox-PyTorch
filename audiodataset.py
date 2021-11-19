@@ -38,9 +38,8 @@ class AudioDataset(Dataset):
     def __getitem__(self, idx):
         label=self.labels[idx]
         sr, audio=wavfile.read(os.path.join(self.data_dir,self.X[idx]))
-        if(self.is_train):
-            start=np.random.randint(0,audio.shape[0]-self.croplen+1)
-            audio=audio[start:start+self.croplen]
+        start=np.random.randint(0,audio.shape[0]-self.croplen+1)
+        audio=audio[start:start+self.croplen]
         audio=sig.preprocess(audio).astype(np.float32)
         audio=np.expand_dims(audio, 2)
         return self.transforms(audio), label
