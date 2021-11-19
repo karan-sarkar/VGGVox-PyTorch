@@ -5,6 +5,7 @@
 import random
 import torch
 import torchaudio
+from torchaudio import transforms
 import os
 import numpy as np
 
@@ -328,9 +329,42 @@ def interpolate_bilinear(grid,
     return interp
 
 
+class SpectrogramToDB(object):
+    """Turns a spectrogram from the power/amplitude scale to the decibel scale.
+    This output depends on the maximum value in the input spectrogram, and so
+    may return different values for an audio clip split into snippets vs. a
+    a full clip. This method is sourced from an earlier release of torchaudio and
+    is no longer present in current versions.
+    Args:
+        stype (str): scale of input spectrogram ("power" or "magnitude").  The
+            power being the elementwise square of the magnitude. default: "power"
+        top_db (float, optional): minimum negative cut-off in decibels.  A reasonable number
+            is 80.
+    """
+    def __init__(self, stype="power", top_db=None):
+        self.stype = stype
+        if top_db is not None and top_db < 0:
+            raise ValueError('top_db must be positive value')
+        self.top_db = top_db
+        self.multiplier = 10. if stype == "power" else 20.
+        self.amin = 1e-10
+        self.ref_value = 1.
+        self.db_multiplier = np.log10(np.maximum(self.amin, self.ref_value))
+
+    def __call__(self, spec):
+        # numerically stable implementation from librosa
+        # https://librosa.github.io/librosa/_modules/librosa/core/spectrum.html
+        spec_db = self.multiplier * torch.log10(torch.clamp(spec, min=self.amin))
+        spec_db -= self.multiplier * self.db_multiplier
+
+        if self.top_db is not None:
+            spec_db = torch.max(spec_db, spec_db.new_full((1,), spec_db.max() - self.top_db))
+        return spec_db
+
+
 class SpecAugment(torch.nn.Module):
     
-    def __init__(self, W=50, F=30, T=40, freq_masks=1, time_masks=1, freq_zero=False, time_zero=False):
+    def __init__(self, W=50, F=30, T=40, freq_masks=1, time_masks=1, freq_zero=False, time_zero=False, to_mel=False):
         super().__init__()
         
         self.W = W
@@ -340,6 +374,7 @@ class SpecAugment(torch.nn.Module):
         self.time_masks = time_masks
         self.freq_zero = freq_zero
         self.time_zero = time_zero
+        self.to_mel = to_mel
     
 
     def time_warp(self, spec):
@@ -401,4 +436,9 @@ class SpecAugment(torch.nn.Module):
         return cloned
     
     def forward(self, spec):
+        if self.to_mel:
+            spec = torch.reshape(spec, (1, -1))
+            mel = transforms.MelSpectrogram(sample_rate=16000, n_mels=128, n_fft=1024, win_length=512, hop_length=256, 
+                                    f_min=0, f_max=8000, pad=0,)(spec)
+            spec = SpectrogramToDB(stype='magnitude', top_db=8000)(mel)
         return self.time_mask(self.freq_mask(self.time_warp(spec)))
