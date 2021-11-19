@@ -206,7 +206,7 @@ if __name__=="__main__":
     parser.add_argument("--batch-size","-bs",help="Batch Size", default=1, type=int)
     parser.add_argument("--num_workers","-nw",help="Number of workers to use in the Dataloader", default=2, type=int)
     parser.add_argument("--fsl-arch",help="The Few-shot architecture to use", default="relation-net", choices=['relation-net'])
-    parser.add_argument("--backbone-arch",help="The Backbone architecture to use", default="resnet18", choices=['resnet18'])
+    parser.add_argument("--backbone-arch",help="The Backbone architecture to use", default="resnet18", choices=['resnet18', 'audionet'])
     args=parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
