@@ -167,7 +167,7 @@ class Experiment(object):
         val_F = val_F[val_F.Label.map(lambda l: l in wav_folders)]
         Datasets={
             "train":AudioDataset(df_F[df_F['Set']==1], data_dir, data_transforms=[
-                SpecAugment(W=50, F=30, T=40, freq_masks=2, time_masks=2, freq_zero=False, time_zero=False, to_mel=True),
+                SpecAugment(W=50, F=30, T=40, freq_masks=2, time_masks=2, freq_zero=False, time_zero=False, to_mel=False),
             ]),
             "val":[AudioDataset(val_F[val_F['lengths']==i], data_dir, is_train=False) for i in range(300,1100,100)],
             "test":AudioDataset(df_F[df_F['Set']==3], data_dir, is_train=False)
