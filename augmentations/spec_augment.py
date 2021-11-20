@@ -436,6 +436,7 @@ class SpecAugment(torch.nn.Module):
         return cloned
     
     def forward(self, spec):
+        spec = torch.reshape(spec, (1, 512, 300))
         if self.to_mel:
             spec = torch.reshape(spec, (1, -1))
             mel = transforms.MelSpectrogram(sample_rate=16000, n_mels=128, n_fft=1024, win_length=512, hop_length=256, 
