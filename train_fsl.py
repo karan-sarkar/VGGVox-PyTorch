@@ -24,7 +24,20 @@ sys.modules['easyfsl.utils'].compute_backbone_output_shape = __import__('relatio
 from easyfsl.methods import RelationNetworks, AbstractMetaLearner
 from augmentations.spec_augment import SpecAugment
 
+class ExpandChannels(nn.Module):
+    def __init__(self, out_channels=3) -> None:
+        """Expands a single channel input to the specified number of channels. Shares memory across all channels.
 
+        Args:
+            out_channels (int, optional): The number of output channels. Defaults to 3.
+        """
+        super().__init__()
+        self.out_channels = out_channels
+        
+    def forward(self, x):
+        shape = list(x.shape)
+        shape[1] = self.out_channels
+        return x.expand(*shape)
 class Experiment(object):
     
 
@@ -177,7 +190,7 @@ class Experiment(object):
             "val":[TaskSampler(i, n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_VALIDATION_TASKS) for i in Datasets['val']],
             "test":TaskSampler(Datasets['test'], n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_EVALUATION_TASKS),
         }
-        print(samplers['test'].items_per_label)
+        # print(samplers['test'].items_per_label)
  
         Dataloaders={}
         Dataloaders['train']=DataLoader(Datasets['train'],num_workers=self.NUM_WORKERS, batch_sampler=samplers['train'], collate_fn=samplers['train'].episodic_collate_fn)
@@ -192,12 +205,14 @@ def get_model(
         num_ways = 5
     ):
     if backbone_arch == 'resnet18':
+        
+            
         backbone = resnet18(pretrained)
-        # replace the first conv1 layer and remove the avgpool and fc layers
         backbone = nn.Sequential(
-            # Audio dataset has only one channel
-            nn.Conv2d(1, backbone.inplanes, kernel_size=7, stride=2, padding=3,bias=False),
-            *list(backbone.children())[1:-2],
+            # Audio dataset has only one channel, expand to 3
+            ExpandChannels(3),
+            # Remove the avgpool and fc layers
+            *list(backbone.children())[:-2],
         )
         
     elif backbone_arch == 'audionet':
