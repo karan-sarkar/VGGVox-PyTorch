@@ -39,7 +39,7 @@ def sparse_image_warp(img_tensor,
 def get_grid_locations(image_height, image_width, device):
     y_range = torch.linspace(0, image_height - 1, image_height, device=device)
     x_range = torch.linspace(0, image_width - 1, image_width, device=device)
-    y_grid, x_grid = torch.meshgrid(y_range, x_range)
+    y_grid, x_grid = torch.meshgrid(y_range, x_range, indexing='ij')
     return torch.stack((y_grid, x_grid), -1)
 
 
@@ -50,7 +50,7 @@ def flatten_grid_locations(grid_locations, image_height, image_width):
 def get_flat_grid_locations(image_height, image_width, device):
     y_range = torch.linspace(0, image_height - 1, image_height, device=device)
     x_range = torch.linspace(0, image_width - 1, image_width, device=device)
-    y_grid, x_grid = torch.meshgrid(y_range, x_range)
+    y_grid, x_grid = torch.meshgrid(y_range, x_range, indexing='ij')
     return torch.stack((y_grid, x_grid), -1).reshape([image_height * image_width, 2])
 
 
@@ -98,7 +98,7 @@ def solve_interpolation(train_points, train_values, order, regularization_weight
     rhs = torch.cat((f, rhs_zeros), 1)  # [b, n + d + 1, k]
 
     # Then, solve the linear system and unpack the results.
-    X, LU = torch.solve(rhs, lhs)
+    X = torch.linalg.solve(lhs, rhs)
     w = X[:, :n, :]
     v = X[:, n:, :]
 
@@ -219,7 +219,7 @@ def dense_image_warp(image, flow):
     # The flow is defined on the image grid. Turn the flow into a list of query
     # points in the grid space.
     grid_x, grid_y = torch.meshgrid(
-        torch.arange(width, device=device), torch.arange(height, device=device))
+        torch.arange(width, device=device), torch.arange(height, device=device), indexing='ij')
 
     stacked_grid = torch.stack((grid_y, grid_x), dim=2).float()
 
@@ -294,7 +294,7 @@ def interpolate_bilinear(grid,
         # alpha has the same type as the grid, as we will directly use alpha
         # when taking linear combinations of pixel values from the image.
 
-        alpha = torch.tensor((queries - floor), dtype=grid_type, device=grid_device)
+        alpha = (queries - floor)
         min_alpha = torch.tensor(0.0, dtype=grid_type, device=grid_device)
         max_alpha = torch.tensor(1.0, dtype=grid_type, device=grid_device)
         alpha = torch.min(torch.max(min_alpha, alpha), max_alpha)
