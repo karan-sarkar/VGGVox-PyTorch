@@ -225,7 +225,7 @@ if __name__=="__main__":
     Dataloaders = experiment.dataloaders(args.dir)
     
     
-    model = get_model(pretrained=False, backbone_arch='audionet')
+    model = get_model(pretrained=False, backbone_arch=args.backbone_arch)
     model = model.to(device)
     
     experiment.train(model, Dataloaders)
