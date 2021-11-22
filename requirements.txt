@@ -10,3 +10,4 @@ torchsummary
 easyfsl
 torchmetrics
 jupyter
+torchaudio
