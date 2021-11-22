@@ -67,7 +67,7 @@ class Experiment(object):
         # eval mode affects the behaviour of some layers (such as batch normalization or dropout)
         # no_grad() tells torch not to keep in memory the whole computational graph (it's more lightweight this way)
         model.eval()
-        accuracy = torchmetrics.Accuracy().to(self.device)
+        accuracy = torchmetrics.Accuracy(num_classes=self.N_WAY).to(self.device)
         accuracy.reset()
         for data_loader in data_loaders:
             with torch.no_grad():
@@ -102,7 +102,7 @@ class Experiment(object):
         return df_F
 
     def train(self, model: AbstractMetaLearner, Dataloaders: Dict):
-        accuracy = torchmetrics.Accuracy().to(self.device)
+        accuracy = torchmetrics.Accuracy(num_classes=self.N_WAY).to(self.device)
         optimizer=SGD(model.parameters(), lr=self.LR, momentum=0.99, weight_decay=5e-4)
         scheduler=lr_scheduler.StepLR(optimizer, step_size=5, gamma=1/1.17)
         #Save models after accuracy crosses 75
