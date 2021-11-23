@@ -10,6 +10,9 @@ import os
 import numpy as np
 
 
+
+
+
 def sparse_image_warp(img_tensor,
                       source_control_point_locations,
                       dest_control_point_locations,
@@ -436,6 +439,7 @@ class SpecAugment(torch.nn.Module):
         return cloned
     
     def forward(self, spec):
+        spec = spec.cuda()
         spec = torch.reshape(spec, (1, 512, 300))
         if self.to_mel:
             spec = torch.reshape(spec, (1, -1))

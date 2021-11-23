@@ -150,8 +150,8 @@ class Experiment(object):
                 model.process_support_set(support_images, support_labels)
                 
                 outputs = model(query_images)
-                print('Query', outputs.shape, query_labels, outputs.argmax(-1))
-                print('Support', support_labels)
+                #print('Query', outputs.shape, query_labels, outputs.argmax(-1))
+                #print('Support', support_labels)
                 
                 episode_acc = accuracy(outputs, query_labels)
                 
@@ -247,6 +247,10 @@ def get_model(
     return model
 
 if __name__=="__main__":
+    
+    torch.multiprocessing.set_start_method('spawn')# good solution !!!!
+
+
     parser=argparse.ArgumentParser(
         description="Train and evaluate VGGVox on complete voxceleb1 for identification",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -257,8 +261,8 @@ if __name__=="__main__":
     parser.add_argument("--fsl-arch",help="The Few-shot architecture to use", default="relation-net", choices=['relation-net', 'proto-net'])
     parser.add_argument("--backbone-arch",help="The Backbone architecture to use", default="resnet18", choices=['resnet18', 'audionet'])
     parser.add_argument("--num_way","-w",help="Number of ways to classify the model", default=5, type=int)
-    parser.add_argument("--num_shot","-s",help="Number of support images per class", default=5, type=int)
-    parser.add_argument("--num_query","-q",help="Number of query images for each class in one task", default=5, type=int)
+    parser.add_argument("--num_shot","-s",help="Number of support images per class", default=3, type=int)
+    parser.add_argument("--num_query","-q",help="Number of query images for each class in one task", default=2, type=int)
     parser.add_argument("--num_train_tasks","-tt",help="Number of tasks to sample for training", default=20, type=int)
     parser.add_argument("--num_val_tasks","-vt",help="Number of tasks to sample for validation", default=5, type=int)
     parser.add_argument("--num_eval_tasks","-et",help="Number of tasks to sample for evaluation/test", default=5, type=int)
