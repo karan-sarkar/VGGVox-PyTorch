@@ -230,7 +230,6 @@ def get_model(
             ExpandChannels(3),
             # Remove the avgpool and fc layers
             *list(backbone.children())[:-2],
-            nn.Flatten()
         )
         
     elif backbone_arch == 'audionet':
@@ -240,7 +239,11 @@ def get_model(
         # hack to get relationnet to work with audiodataset
         model = RelationNetworks(backbone)
     elif fsl_arch == 'proto-net':
-        print('Proto-Net')
+        # print('Proto-Net')
+        backbone = nn.Sequential(
+            *list(backbone.children())[:-2],
+            nn.Flatten(),
+        )
         model = PrototypicalNetworks(backbone)
     else:
         raise ValueError('Invalid FSL arch type')
