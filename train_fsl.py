@@ -4,12 +4,14 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import argparse
+from torch import functional
 import torchmetrics
 
 import torch
 from easyfsl.data_tools import EasySet, TaskSampler
 from easyfsl.utils import plot_images, sliding_average
 from torch import nn, optim
+import torch.nn.functional as F
 from torch.optim import lr_scheduler, SGD, Adam
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -23,6 +25,7 @@ from audionet import AudioNet
 sys.modules['easyfsl.utils'].compute_backbone_output_shape = __import__('relation_net_util').compute_backbone_output_shape
 from easyfsl.methods import RelationNetworks, AbstractMetaLearner, PrototypicalNetworks
 from augmentations.spec_augment import SpecAugment
+from augmentations.mixup import mixup_batch
 
 class ExpandChannels(nn.Module):
     def __init__(self, out_channels=3) -> None:
@@ -38,6 +41,38 @@ class ExpandChannels(nn.Module):
         shape = list(x.shape)
         shape[1] = self.out_channels
         return x.expand(*shape)
+    
+class RelationNetworksMixup(RelationNetworks):
+    
+    # We need to override the compute loss method to accept one hot encoded tensors as well as normal tensors.
+    def compute_loss(
+        self, classification_scores: torch.Tensor, query_labels: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Overrides the method compute_loss of AbstractMetaLearner because Relation Networks
+        use the Mean Square Error (MSE) loss. MSE is a regression loss, so it requires the ground
+        truth to be of the same shape as the predictions. In our case, this means that labels
+        must be provided in a one hot fashion.
+
+        Note that we need to enforce the number of classes by using the last computed prototypes,
+        in case query_labels doesn't contain all possible labels.
+
+        Args:
+            classification_scores: predicted classification scores of shape (n_query, n_classes)
+            query_labels: one hot ground truth labels of shape (n_query, n_classes) or (n_query,)
+
+        Returns:
+            MSE loss between the prediction and the ground truth
+        """
+        if query_labels.shape != classification_scores.shape:
+            # The query_labels are not in one hot shape. Transform them
+            query_labels = nn.functional.one_hot(
+                query_labels, num_classes=self.prototypes.shape[0]
+            ).float()
+        return self.loss_function(
+            classification_scores, query_labels,
+        )
+    
 class Experiment(object):
     
 
@@ -53,6 +88,7 @@ class Experiment(object):
                 num_val_tasks = 100,
                 device='cuda',
                 augmentation='none',
+                alpha=0.2,
         ) -> None:
         super().__init__()
         self.LOCAL_DATA_DIR=os.path.join(os.path.dirname(__file__), "data")
@@ -72,6 +108,7 @@ class Experiment(object):
         
         self.device = device
         self.augmentation = augmentation
+        self.alpha = alpha
         
 
     def evaluate(self, model: AbstractMetaLearner, data_loaders: List[DataLoader]):
@@ -141,21 +178,35 @@ class Experiment(object):
                 query_labels,
                 class_ids,
             ) in enumerate(loop, start=1):
+                    
                 optimizer.zero_grad()
+                
                 support_images = support_images.to(self.device)
                 support_labels = support_labels.to(self.device)
                 query_images = query_images.to(self.device)
                 query_labels = query_labels.to(self.device)
                 
                 model.process_support_set(support_images, support_labels)
-                
+                QUERY_BATCH_SIZE = query_images.shape[0]
+                query_labels_hot = F.one_hot(query_labels)
+                # Create interpolated data for mixup
+                if self.augmentation == 'mixup':
+                    query_perm = torch.randperm(query_images.size()[0])
+                    
+                    query_images2 = query_images[query_perm]
+                    query_labels2 = query_labels[query_perm]
+                    
+                    query_labels2_hot = F.one_hot(query_labels2)
+                    
+                    query_images2, query_labels2_hot = mixup_batch((query_images, query_labels_hot), (query_images2, query_labels2_hot), alpha = self.alpha)
+                    # concatenate the original data with mixup data. This doubles the batch size
+                    query_images = torch.cat((query_images, query_images2), dim=0)
+                    query_labels_hot = torch.cat((query_labels_hot, query_labels2_hot), dim=0)
                 outputs = model(query_images)
-                print('Query', outputs.shape, query_labels, outputs.argmax(-1))
-                print('Support', support_labels)
                 
-                episode_acc = accuracy(outputs, query_labels)
+                episode_acc = accuracy(outputs[:QUERY_BATCH_SIZE], query_labels)
                 
-                loss = model.compute_loss(outputs, query_labels)
+                loss = model.compute_loss(outputs, query_labels_hot)
                 running_loss.append(loss.item())
                 
                 loss.backward()
@@ -236,8 +287,9 @@ def get_model(
         backbone = AudioNet(512, mode='fe')
     print(backbone)
     if fsl_arch == 'relation-net':
-        # hack to get relationnet to work with audiodataset
-        model = RelationNetworks(backbone)
+        
+        model = RelationNetworksMixup(backbone)
+        
     elif fsl_arch == 'proto-net':
         # print('Proto-Net')
         backbone = nn.Sequential(
