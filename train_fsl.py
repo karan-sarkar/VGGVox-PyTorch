@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from torch.optim import lr_scheduler, SGD, Adam
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from torchvision.models import resnet18
+from torchvision.models import resnet18, resnet34
 from tqdm.autonotebook import tqdm
 from audiodataset import AudioDataset
 from audionet import AudioNet
@@ -80,7 +80,7 @@ class Experiment(object):
                 batch_size: int = 32,
                 num_workers = 2,
                 num_epochs = 10,
-                num_way = 10,
+                num_way = 20,
                 num_shot = 1,
                 num_query = 3,
                 num_train_tasks = 100,
@@ -272,9 +272,7 @@ def get_model(
         pretrained: bool =False,
         num_ways = 10
     ):
-    if backbone_arch == 'resnet18':
-        
-            
+    if backbone_arch == 'resnet18': 
         backbone = resnet18(pretrained)
         backbone = nn.Sequential(
             # Audio dataset has only one channel, expand to 3
@@ -282,7 +280,14 @@ def get_model(
             # Remove the avgpool and fc layers
             *list(backbone.children())[:-2],
         )
-        
+    elif backbone_arch == 'resnet34':
+        backbone = resnet34(pretrained)
+        backbone = nn.Sequential(
+            # Audio dataset has only one channel, expand to 3
+            ExpandChannels(3),
+            # Remove the avgpool and fc layers
+            *list(backbone.children())[:-2],
+        ) 
     elif backbone_arch == 'audionet':
         backbone = AudioNet(512, mode='fe')
     print(backbone)
@@ -310,7 +315,7 @@ if __name__=="__main__":
     parser.add_argument("--batch-size","-bs",help="Batch Size", default=1, type=int)
     parser.add_argument("--num_workers","-nw",help="Number of workers to use in the Dataloader", default=2, type=int)
     parser.add_argument("--fsl-arch",help="The Few-shot architecture to use", default="relation-net", choices=['relation-net', 'proto-net'])
-    parser.add_argument("--backbone-arch",help="The Backbone architecture to use", default="resnet18", choices=['resnet18', 'audionet'])
+    parser.add_argument("--backbone-arch",help="The Backbone architecture to use", default="resnet18", choices=['resnet18', 'resnet34', 'audionet'])
     parser.add_argument("--num_way","-w",help="Number of ways to classify the model", default=5, type=int)
     parser.add_argument("--num_shot","-s",help="Number of support images per class", default=5, type=int)
     parser.add_argument("--num_query","-q",help="Number of query images for each class in one task", default=5, type=int)
