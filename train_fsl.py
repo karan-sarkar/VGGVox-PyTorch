@@ -233,10 +233,26 @@ if __name__=="__main__":
     parser.add_argument("--num_workers","-nw",help="Number of workers to use in the Dataloader", default=2, type=int)
     parser.add_argument("--fsl-arch",help="The Few-shot architecture to use", default="relation-net", choices=['relation-net'])
     parser.add_argument("--backbone-arch",help="The Backbone architecture to use", default="resnet18", choices=['resnet18', 'audionet'])
+    parser.add_argument("--num_way","-w",help="Number of ways to classify the model", default=5, type=int)
+    parser.add_argument("--num_shot","-s",help="Number of support images per class", default=5, type=int)
+    parser.add_argument("--num_query","-q",help="Number of query images for each class in one task", default=5, type=int)
+    parser.add_argument("--num_train_tasks","-tt",help="Number of tasks to sample for training", default=20, type=int)
+    parser.add_argument("--num_val_tasks","-vt",help="Number of tasks to sample for validation", default=5, type=int)
+    parser.add_argument("--num_eval_tasks","-et",help="Number of tasks to sample for evaluation/test", default=5, type=int)
     args=parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-    experiment = Experiment(batch_size=args.batch_size, num_workers=args.num_workers, device=device)
+    experiment = Experiment(
+        batch_size=args.batch_size, 
+        num_workers=args.num_workers, 
+        device=device,
+        num_way=args.num_way,
+        num_shot=args.num_shot,
+        num_query=args.num_query,
+        num_train_tasks=args.num_train_tasks,
+        num_val_tasks=args.num_val_tasks,
+        num_eval_tasks=args.num_eval_tasks,
+    )
     Dataloaders = experiment.dataloaders(args.dir)
     
     
