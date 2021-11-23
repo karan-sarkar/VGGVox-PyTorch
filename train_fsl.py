@@ -206,7 +206,7 @@ class Experiment(object):
                 
                 episode_acc = accuracy(outputs[:QUERY_BATCH_SIZE], query_labels)
                 
-                loss = model.compute_loss(outputs, query_labels_hot)
+                loss = model.compute_loss(outputs, query_labels_hot.to(torch.float))
                 running_loss.append(loss.item())
                 
                 loss.backward()
