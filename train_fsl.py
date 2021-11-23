@@ -52,6 +52,7 @@ class Experiment(object):
                 num_eval_tasks = 100,
                 num_val_tasks = 100,
                 device='cuda',
+                augmentation='none',
         ) -> None:
         super().__init__()
         self.LOCAL_DATA_DIR=os.path.join(os.path.dirname(__file__), "data")
@@ -70,6 +71,7 @@ class Experiment(object):
         self.NUM_WORKERS = num_workers
         
         self.device = device
+        self.augmentation = augmentation
         
 
     def evaluate(self, model: AbstractMetaLearner, data_loaders: List[DataLoader]):
@@ -167,7 +169,18 @@ class Experiment(object):
                     torch.save(best_model, os.path.join(self.MODEL_DIR,"FSL_BEST_%d_%.2f.pth"%(best_epoch, best_acc)))
             scheduler.step()
             
-            
+    def _get_transforms(self):
+        ts =[]
+        if self.augmentation == 'none':
+            pass
+        elif self.augmentation == 'spec':
+            ts.append(SpecAugment(W=50, F=30, T=40, freq_masks=2, time_masks=2, freq_zero=False, time_zero=False, to_mel=False),)
+        elif self.augmentation == 'mixup':
+            # TODO add mixup here
+            pass
+        print('ts', ts)
+        return ts
+    
     def dataloaders(self, data_dir):
         df_meta=pd.read_csv(os.path.join(self.LOCAL_DATA_DIR, "vox1_meta.csv"),sep="\t")
         df_F=pd.read_csv(os.path.join(self.LOCAL_DATA_DIR, "iden_split.txt"), sep=" ", names=["Set","Path"] )
@@ -179,9 +192,7 @@ class Experiment(object):
         df_F = df_F[df_F.Label.map(lambda l: l in wav_folders)]
         val_F = val_F[val_F.Label.map(lambda l: l in wav_folders)]
         Datasets={
-            "train":AudioDataset(df_F[df_F['Set']==1], data_dir, data_transforms=[
-                SpecAugment(W=50, F=30, T=40, freq_masks=2, time_masks=2, freq_zero=False, time_zero=False, to_mel=False),
-            ]),
+            "train":AudioDataset(df_F[df_F['Set']==1], data_dir, data_transforms=self._get_transforms()),
             "val":[AudioDataset(val_F[val_F['lengths']==i], data_dir, is_train=False) for i in range(300,1100,100)],
             "test":AudioDataset(df_F[df_F['Set']==3], data_dir, is_train=False)
         }
@@ -227,8 +238,10 @@ def get_model(
 
 if __name__=="__main__":
     parser=argparse.ArgumentParser(
-        description="Train and evaluate VGGVox on complete voxceleb1 for identification")
-    parser.add_argument("--dir","-d",help="Directory with wav and csv files", default="./Data/")
+        description="Train and evaluate VGGVox on complete voxceleb1 for identification",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--dir","-d",help="Directory with wav and csv files", default="./data/")
     parser.add_argument("--batch-size","-bs",help="Batch Size", default=1, type=int)
     parser.add_argument("--num_workers","-nw",help="Number of workers to use in the Dataloader", default=2, type=int)
     parser.add_argument("--fsl-arch",help="The Few-shot architecture to use", default="relation-net", choices=['relation-net'])
@@ -240,6 +253,8 @@ if __name__=="__main__":
     parser.add_argument("--num_val_tasks","-vt",help="Number of tasks to sample for validation", default=5, type=int)
     parser.add_argument("--num_eval_tasks","-et",help="Number of tasks to sample for evaluation/test", default=5, type=int)
     parser.add_argument("--num_epochs","-e",help="Number of epochs", default=10, type=int)
+    parser.add_argument("--augmentation", "-a", help="The data augmentation to use", default="none", choices=['spec', 'mixup', 'none'])
+    
     args=parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
@@ -254,6 +269,7 @@ if __name__=="__main__":
         num_val_tasks=args.num_val_tasks,
         num_eval_tasks=args.num_eval_tasks,
         num_epochs=args.num_epochs,
+        augmentation=args.augmentation,
     )
     Dataloaders = experiment.dataloaders(args.dir)
     
