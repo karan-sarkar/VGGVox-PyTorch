@@ -44,7 +44,7 @@ class Experiment(object):
     def __init__(self, 
                 batch_size: int = 128,
                 num_workers = 2,
-                num_epochs = 10000,
+                num_epochs = 10,
                 num_way = 10,
                 num_shot = 1,
                 num_query = 3,
@@ -239,6 +239,7 @@ if __name__=="__main__":
     parser.add_argument("--num_train_tasks","-tt",help="Number of tasks to sample for training", default=20, type=int)
     parser.add_argument("--num_val_tasks","-vt",help="Number of tasks to sample for validation", default=5, type=int)
     parser.add_argument("--num_eval_tasks","-et",help="Number of tasks to sample for evaluation/test", default=5, type=int)
+    parser.add_argument("--num_epochs","-e",help="Number of epochs", default=10, type=int)
     args=parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
@@ -252,6 +253,7 @@ if __name__=="__main__":
         num_train_tasks=args.num_train_tasks,
         num_val_tasks=args.num_val_tasks,
         num_eval_tasks=args.num_eval_tasks,
+        num_epochs=args.num_epochs,
     )
     Dataloaders = experiment.dataloaders(args.dir)
     
