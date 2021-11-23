@@ -39,7 +39,7 @@ def sparse_image_warp(img_tensor,
 def get_grid_locations(image_height, image_width, device):
     y_range = torch.linspace(0, image_height - 1, image_height, device=device)
     x_range = torch.linspace(0, image_width - 1, image_width, device=device)
-    y_grid, x_grid = torch.meshgrid(y_range, x_range, indexing='ij')
+    y_grid, x_grid = torch.meshgrid(y_range, x_range)
     return torch.stack((y_grid, x_grid), -1)
 
 
@@ -50,7 +50,7 @@ def flatten_grid_locations(grid_locations, image_height, image_width):
 def get_flat_grid_locations(image_height, image_width, device):
     y_range = torch.linspace(0, image_height - 1, image_height, device=device)
     x_range = torch.linspace(0, image_width - 1, image_width, device=device)
-    y_grid, x_grid = torch.meshgrid(y_range, x_range, indexing='ij')
+    y_grid, x_grid = torch.meshgrid(y_range, x_range)
     return torch.stack((y_grid, x_grid), -1).reshape([image_height * image_width, 2])
 
 
@@ -219,7 +219,7 @@ def dense_image_warp(image, flow):
     # The flow is defined on the image grid. Turn the flow into a list of query
     # points in the grid space.
     grid_x, grid_y = torch.meshgrid(
-        torch.arange(width, device=device), torch.arange(height, device=device), indexing='ij')
+        torch.arange(width, device=device), torch.arange(height, device=device))
 
     stacked_grid = torch.stack((grid_y, grid_x), dim=2).float()
 

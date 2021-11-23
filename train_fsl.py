@@ -21,7 +21,7 @@ from audionet import AudioNet
 # if 'easyfsl.utils.compute_backbone_output_shape' in sys.modules:
 #     del sys.modules['easyfsl.utils']
 sys.modules['easyfsl.utils'].compute_backbone_output_shape = __import__('relation_net_util').compute_backbone_output_shape
-from easyfsl.methods import RelationNetworks, AbstractMetaLearner
+from easyfsl.methods import RelationNetworks, AbstractMetaLearner, PrototypicalNetworks
 from augmentations.spec_augment import SpecAugment
 
 class ExpandChannels(nn.Module):
@@ -42,7 +42,7 @@ class Experiment(object):
     
 
     def __init__(self, 
-                batch_size: int = 128,
+                batch_size: int = 32,
                 num_workers = 2,
                 num_epochs = 10000,
                 num_way = 10,
@@ -127,6 +127,8 @@ class Experiment(object):
             model.train()
             running_loss=[]
             # random_subset=None
+            #model.fit(Dataloaders['train'], optimizer)
+            
             loop=tqdm(Dataloaders['train'])
             loop.set_description(f'Epoch [{epoch+1}/{self.N_EPOCHS}]')
             accuracy.reset()
@@ -146,6 +148,8 @@ class Experiment(object):
                 model.process_support_set(support_images, support_labels)
                 
                 outputs = model(query_images)
+                print('Query', outputs.shape, query_labels, outputs.argmax(-1))
+                print('Support', support_labels)
                 
                 episode_acc = accuracy(outputs, query_labels)
                 
@@ -153,10 +157,12 @@ class Experiment(object):
                 running_loss.append(loss.item())
                 
                 loss.backward()
+                #torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
                 optimizer.step()
-                loop.set_postfix(loss=sum(running_loss)/len(running_loss), episode_acc=episode_acc.item(), avg_acc=accuracy.compute().item())
-                
-            model.eval()
+                loop.set_postfix(loss=running_loss[-1], episode_acc=episode_acc.item(), avg_acc=accuracy.compute().item())
+            ''' 
+            model.evaluate(Dataloaders['test'])
+            '''
             with torch.no_grad():
                 val_acc = self.evaluate(model, Dataloaders['test'])
                 print('Validation accuracy: %.2f'%val_acc)
@@ -202,7 +208,7 @@ def get_model(
         fsl_arch='relation-net',
         backbone_arch='resnet18',
         pretrained: bool =False,
-        num_ways = 5
+        num_ways = 10
     ):
     if backbone_arch == 'resnet18':
         
@@ -213,14 +219,18 @@ def get_model(
             ExpandChannels(3),
             # Remove the avgpool and fc layers
             *list(backbone.children())[:-2],
+            nn.Flatten()
         )
         
     elif backbone_arch == 'audionet':
-        backbone = AudioNet(num_ways, mode='fe')
-    
+        backbone = AudioNet(512, mode='fe')
+    print(backbone)
     if fsl_arch == 'relation-net':
         # hack to get relationnet to work with audiodataset
         model = RelationNetworks(backbone)
+    elif fsl_arch == 'proto-net':
+        print('Proto-Net')
+        model = PrototypicalNetworks(backbone)
     else:
         raise ValueError('Invalid FSL arch type')
     return model
@@ -231,16 +241,16 @@ if __name__=="__main__":
     parser.add_argument("--dir","-d",help="Directory with wav and csv files", default="./Data/")
     parser.add_argument("--batch-size","-bs",help="Batch Size", default=1, type=int)
     parser.add_argument("--num_workers","-nw",help="Number of workers to use in the Dataloader", default=2, type=int)
-    parser.add_argument("--fsl-arch",help="The Few-shot architecture to use", default="relation-net", choices=['relation-net'])
+    parser.add_argument("--fsl-arch",help="The Few-shot architecture to use", default="relation-net", choices=['relation-net', 'proto-net'])
     parser.add_argument("--backbone-arch",help="The Backbone architecture to use", default="resnet18", choices=['resnet18', 'audionet'])
     args=parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-    experiment = Experiment(batch_size=args.batch_size, num_workers=args.num_workers, device=device)
+    experiment = Experiment(num_way = 10, batch_size=args.batch_size, num_workers=args.num_workers, device=device)
     Dataloaders = experiment.dataloaders(args.dir)
     
     
-    model = get_model(pretrained=False, backbone_arch=args.backbone_arch)
+    model = get_model(pretrained=False, backbone_arch=args.backbone_arch, fsl_arch = args.fsl_arch)
     model = model.to(device)
     
     experiment.train(model, Dataloaders)
