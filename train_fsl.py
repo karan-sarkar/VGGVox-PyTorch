@@ -1,31 +1,102 @@
+import argparse
 import os
 import sys
-from typing import Dict, List, Tuple
+from time import time
+from typing import Any, Dict, List, Tuple
+
 import numpy as np
 import pandas as pd
-import argparse
-from torch import functional
-import torchmetrics
-
 import torch
+import torch.nn.functional as F
 from easyfsl.data_tools import EasySet, TaskSampler
 from easyfsl.utils import plot_images, sliding_average
-from torch import nn, optim
-import torch.nn.functional as F
-from torch.optim import lr_scheduler, SGD, Adam
+from torch import functional, nn, optim
+from torch.optim import SGD, Adam, lr_scheduler
 from torch.utils.data import DataLoader
+from torchmetrics import Accuracy
 from torchvision import transforms
 from torchvision.models import resnet18, resnet34
 from tqdm.autonotebook import tqdm
+
 from audiodataset import AudioDataset
 from audionet import AudioNet
-# from relation_net_util import compute_backbone_output_shape
-# if 'easyfsl.utils.compute_backbone_output_shape' in sys.modules:
-#     del sys.modules['easyfsl.utils']
+
 sys.modules['easyfsl.utils'].compute_backbone_output_shape = __import__('relation_net_util').compute_backbone_output_shape
-from easyfsl.methods import RelationNetworks, AbstractMetaLearner, PrototypicalNetworks
-from augmentations.spec_augment import SpecAugment
+import pytorch_lightning as pl
+from easyfsl.methods import (AbstractMetaLearner, PrototypicalNetworks,
+                             RelationNetworks)
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+
 from augmentations.mixup import mixup_batch
+from augmentations.spec_augment import SpecAugment
+
+
+class FSLModel(pl.LightningModule):
+    
+    def __init__(self, model: AbstractMetaLearner, 
+                lr = 0.001,
+                momentum=0.99,
+                weight_decay=5e-4,
+                lr_step_size=5,
+                lr_gamma=1/1.17,
+                apply_mixup: bool = False, 
+                mixup_alpha: float = 0.3, 
+                **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.save_hyperparameters()
+        self.model = model
+        self.accuracy = Accuracy()
+        self.apply_mixup = apply_mixup
+        self.mixup_alpha = mixup_alpha
+    
+    def configure_optimizers(self):
+        optimizer=SGD(self.model.parameters(), lr=self.hparams.lr, momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+        scheduler=lr_scheduler.StepLR(optimizer, step_size=self.hparams.lr_step_size, gamma=self.hparams.lr_gamma)
+        return [optimizer], [scheduler]
+        
+    def training_step(self, batch):
+        support_images, support_labels, query_images, query_labels, class_ids = batch
+        self.model.process_support_set(support_images, support_labels)
+        QUERY_BATCH_SIZE = query_images.shape[0]
+        query_labels_hot = F.one_hot(query_labels)
+        # Create interpolated data for mixup
+        if self.apply_mixup:
+            query_perm = torch.randperm(query_images.size()[0])
+            
+            query_images2 = query_images[query_perm]
+            query_labels2 = query_labels[query_perm]
+            
+            query_labels2_hot = F.one_hot(query_labels2)
+            
+            query_images2, query_labels2_hot = mixup_batch((query_images, query_labels_hot), (query_images2, query_labels2_hot), alpha = self.mixup_alpha)
+            # concatenate the original data with mixup data. This doubles the batch size
+            query_images = torch.cat((query_images, query_images2), dim=0)
+            query_labels_hot = torch.cat((query_labels_hot, query_labels2_hot), dim=0)
+        outputs = self.model(query_images)
+        
+        self.accuracy(outputs[:QUERY_BATCH_SIZE], query_labels)
+        self.log('train_acc', self.accuracy)
+        
+        loss = self.model.compute_loss(outputs, query_labels_hot.to(torch.float))
+        return loss
+    
+    def evaluate(self, support_images, support_labels, query_images, query_labels):
+        self.model.process_support_set(support_images, support_labels)
+        return self.model(query_images)
+        
+    def validation_step(self, batch):
+        support_images, support_labels, query_images, query_labels, class_ids = batch
+        outputs = self.evaluate(support_images, support_labels, query_images, query_labels)
+        self.accuracy(outputs, query_labels)
+        self.log('val_acc', self.accuracy)
+        return self.model.compute_loss(outputs, query_labels)
+        
+    def test_step(self, batch):
+        support_images, support_labels, query_images, query_labels, class_ids = batch
+        outputs = self.evaluate(support_images, support_labels, query_images, query_labels)
+        self.accuracy(outputs, query_labels)
+        self.log('test_acc', self.accuracy)
+        
 
 class ExpandChannels(nn.Module):
     def __init__(self, out_channels=3) -> None:
@@ -83,18 +154,23 @@ class Experiment(object):
                 num_way = 20,
                 num_shot = 1,
                 num_query = 3,
+                lr = 0.001,
                 num_train_tasks = 100,
                 num_eval_tasks = 100,
                 num_val_tasks = 100,
                 device='cuda',
                 augmentation='none',
+                backbone_arch='resnet18',
+                fsl_arch='relation-net',
                 alpha=0.2,
+                dir='./data',
+                is_dev_run=False,
         ) -> None:
         super().__init__()
         self.LOCAL_DATA_DIR=os.path.join(os.path.dirname(__file__), "data")
         self.MODEL_DIR=os.path.join(os.path.dirname(__file__), "models")
         
-        self.LR=0.001
+        self.LR=lr
         self.B_SIZE=batch_size
         self.N_EPOCHS=num_epochs
         
@@ -108,124 +184,41 @@ class Experiment(object):
         
         self.device = device
         self.augmentation = augmentation
+        self.backbone_arch = backbone_arch
+        self.fsl_arch = fsl_arch
         self.alpha = alpha
+        self.dir = dir
+        self.is_dev_run = is_dev_run
         
+        self.model = self.get_model(pretrained=False, backbone_arch=self.backbone_arch, fsl_arch = self.fsl_arch)
+        self.Dataloaders = self.dataloaders(self.dir)
 
-    def evaluate(self, model: AbstractMetaLearner, data_loaders: List[DataLoader]):
-        # We'll count everything and compute the ratio at the end
-        total_predictions = 0
-        correct_predictions = 0
-
-        # eval mode affects the behaviour of some layers (such as batch normalization or dropout)
-        # no_grad() tells torch not to keep in memory the whole computational graph (it's more lightweight this way)
-        model.eval()
-        accuracy = torchmetrics.Accuracy(num_classes=self.N_WAY).to(self.device)
-        accuracy.reset()
-        for data_loader in data_loaders:
-            with torch.no_grad():
-                loop = tqdm(enumerate(data_loader), total=len(data_loader))
-                for episode_index, (
-                    support_images,
-                    support_labels,
-                    query_images,
-                    query_labels,
-                    class_ids,
-                ) in loop:
-                    #print(support_images.shape, query_images.shape)
-                    #print(support_labels.shape, query_labels.shape)
-                    support_images = support_images.to(self.device)
-                    query_images = query_images.to(self.device)
-                    support_labels = support_labels.to(self.device)
-                    query_labels = query_labels.to(self.device)
-
-                    model.process_support_set(support_images, support_labels)
-                    output = model(query_images)
-                    episode_acc = accuracy(output, query_labels)
-
-                    loop.set_postfix(acc=episode_acc.item())
-
-        return accuracy.compute()
+    def evaluate(self):
         
-    def ppdf(self, df_F):
-        df_F['Label']=df_F['Path'].str.split("/", n=1, expand=True)[0].str.replace("id","")
-        df_F['Label']=df_F['Label'].astype(dtype=float)
-        # print(df_F.head(20))
-        df_F['Path']="wav/"+df_F['Path']
-        return df_F
+        trainer = pl.Trainer(
+            gpus = -1 if str(self.device) != 'cpu' else 0,
+            max_epochs = self.N_EPOCHS,
+            fast_dev_run=self.is_dev_run,
+        )
+        trainer.logger._default_hp_metric = None
+        trainer.test(model = self.model, dataloaders=self.Dataloaders['test'])
 
-    def train(self, model: AbstractMetaLearner, Dataloaders: Dict):
-        accuracy = torchmetrics.Accuracy(num_classes=self.N_WAY).to(self.device)
-        optimizer=SGD(model.parameters(), lr=self.LR, momentum=0.99, weight_decay=5e-4)
-        scheduler=lr_scheduler.StepLR(optimizer, step_size=5, gamma=1/1.17)
-        #Save models after accuracy crosses 75
-        best_acc=75
-        update_grad=1
-        best_epoch=0
-        print("Start Training")
-        for epoch in range(self.N_EPOCHS):
-            model.train()
-            running_loss=[]
-            # random_subset=None
-            #model.fit(Dataloaders['train'], optimizer)
-            
-            loop=tqdm(Dataloaders['train'])
-            loop.set_description(f'Epoch [{epoch+1}/{self.N_EPOCHS}]')
-            accuracy.reset()
-            for episode_index, (
-                support_images,
-                support_labels,
-                query_images,
-                query_labels,
-                class_ids,
-            ) in enumerate(loop, start=1):
-                    
-                optimizer.zero_grad()
-                
-                support_images = support_images.to(self.device)
-                support_labels = support_labels.to(self.device)
-                query_images = query_images.to(self.device)
-                query_labels = query_labels.to(self.device)
-                
-                model.process_support_set(support_images, support_labels)
-                QUERY_BATCH_SIZE = query_images.shape[0]
-                query_labels_hot = F.one_hot(query_labels)
-                # Create interpolated data for mixup
-                if self.augmentation == 'mixup':
-                    query_perm = torch.randperm(query_images.size()[0])
-                    
-                    query_images2 = query_images[query_perm]
-                    query_labels2 = query_labels[query_perm]
-                    
-                    query_labels2_hot = F.one_hot(query_labels2)
-                    
-                    query_images2, query_labels2_hot = mixup_batch((query_images, query_labels_hot), (query_images2, query_labels2_hot), alpha = self.alpha)
-                    # concatenate the original data with mixup data. This doubles the batch size
-                    query_images = torch.cat((query_images, query_images2), dim=0)
-                    query_labels_hot = torch.cat((query_labels_hot, query_labels2_hot), dim=0)
-                outputs = model(query_images)
-                
-                episode_acc = accuracy(outputs[:QUERY_BATCH_SIZE], query_labels)
-                
-                loss = model.compute_loss(outputs, query_labels_hot.to(torch.float))
-                running_loss.append(loss.item())
-                
-                loss.backward()
-                #torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
-                optimizer.step()
-                loop.set_postfix(loss=running_loss[-1], episode_acc=episode_acc.item(), avg_acc=accuracy.compute().item())
-            ''' 
-            model.evaluate(Dataloaders['test'])
-            '''
-            with torch.no_grad():
-                val_acc = self.evaluate(model, Dataloaders['test'])
-                print('Validation accuracy: %.2f'%val_acc)
-                if val_acc>best_acc:
-                    best_acc=val_acc
-                    best_model=model.state_dict()
-                    best_epoch=epoch
-                    torch.save(best_model, os.path.join(self.MODEL_DIR,"FSL_BEST_%d_%.2f.pth"%(best_epoch, best_acc)))
-            scheduler.step()
-            
+    def train(self):
+        
+        trainer = pl.Trainer(
+            gpus = -1 if str(self.device) != 'cpu' else 0,
+            max_epochs = self.N_EPOCHS,
+            callbacks=[
+                ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc"),
+                LearningRateMonitor("epoch"),
+            ],
+            fast_dev_run=self.is_dev_run,
+        )
+        
+        trainer.logger._default_hp_metric = None
+        trainer.fit(model=self.model, train_dataloaders=self.Dataloaders['train'], val_dataloaders=self.Dataloaders['va'])
+        print(f'The best model is stored at {trainer.checkpoint_callback.best_model_path}')
+    
     def _get_transforms(self):
         ts =[]
         if self.augmentation == 'none':
@@ -233,10 +226,16 @@ class Experiment(object):
         elif self.augmentation == 'spec':
             ts.append(SpecAugment(W=50, F=30, T=40, freq_masks=2, time_masks=2, freq_zero=False, time_zero=False, to_mel=False),)
         elif self.augmentation == 'mixup':
-            # TODO add mixup here
             pass
         print('ts', ts)
         return ts
+    
+    def ppdf(self, df_F):
+        df_F['Label']=df_F['Path'].str.split("/", n=1, expand=True)[0].str.replace("id","")
+        df_F['Label']=df_F['Label'].astype(dtype=float)
+        # print(df_F.head(20))
+        df_F['Path']="wav/"+df_F['Path']
+        return df_F
     
     def dataloaders(self, data_dir):
         df_meta=pd.read_csv(os.path.join(self.LOCAL_DATA_DIR, "vox1_meta.csv"),sep="\t")
@@ -265,46 +264,48 @@ class Experiment(object):
         Dataloaders['val']=[DataLoader(i, num_workers=self.NUM_WORKERS, batch_sampler = j, shuffle=False, collate_fn=j.episodic_collate_fn) for i, j in zip(Datasets['val'], samplers['val'])]
         Dataloaders['test']=[DataLoader(Datasets['test'], num_workers=self.NUM_WORKERS, batch_sampler=samplers['test'], shuffle=False, collate_fn=samplers['test'].episodic_collate_fn)]
         return Dataloaders
-
-def get_model(
+    
+    def get_model(
+        self,
         fsl_arch='relation-net',
         backbone_arch='resnet18',
         pretrained: bool =False,
         num_ways = 10
-    ):
-    if backbone_arch == 'resnet18': 
-        backbone = resnet18(pretrained)
-        backbone = nn.Sequential(
-            # Audio dataset has only one channel, expand to 3
-            ExpandChannels(3),
-            # Remove the avgpool and fc layers
-            *list(backbone.children())[:-2],
-        )
-    elif backbone_arch == 'resnet34':
-        backbone = resnet34(pretrained)
-        backbone = nn.Sequential(
-            # Audio dataset has only one channel, expand to 3
-            ExpandChannels(3),
-            # Remove the avgpool and fc layers
-            *list(backbone.children())[:-2],
-        ) 
-    elif backbone_arch == 'audionet':
-        backbone = AudioNet(512, mode='fe')
-    print(backbone)
-    if fsl_arch == 'relation-net':
-        
-        model = RelationNetworksMixup(backbone)
-        
-    elif fsl_arch == 'proto-net':
-        # print('Proto-Net')
-        backbone = nn.Sequential(
-            *list(backbone.children())[:-2],
-            nn.Flatten(),
-        )
-        model = PrototypicalNetworks(backbone)
-    else:
-        raise ValueError('Invalid FSL arch type')
-    return model
+    ) -> AbstractMetaLearner:
+        if backbone_arch == 'resnet18': 
+            backbone = resnet18(pretrained)
+            backbone = nn.Sequential(
+                # Audio dataset has only one channel, expand to 3
+                ExpandChannels(3),
+                # Remove the avgpool and fc layers
+                *list(backbone.children())[:-2],
+            )
+        elif backbone_arch == 'resnet34':
+            backbone = resnet34(pretrained)
+            backbone = nn.Sequential(
+                # Audio dataset has only one channel, expand to 3
+                ExpandChannels(3),
+                # Remove the avgpool and fc layers
+                *list(backbone.children())[:-2],
+            ) 
+        elif backbone_arch == 'audionet':
+            backbone = AudioNet(512, mode='fe')
+        print(backbone)
+        if fsl_arch == 'relation-net':
+            
+            model = RelationNetworksMixup(backbone)
+            
+        elif fsl_arch == 'proto-net':
+            # print('Proto-Net')
+            backbone = nn.Sequential(
+                *list(backbone.children())[:-2],
+                nn.Flatten(),
+            )
+            model = PrototypicalNetworks(backbone)
+        else:
+            raise ValueError('Invalid FSL arch type')
+        model = FSLModel(model=model, apply_mixup=self.augmentation=='mixup', mixup_alpha=self.alpha)
+        return model
 
 if __name__=="__main__":
     
@@ -317,6 +318,7 @@ if __name__=="__main__":
     )
     parser.add_argument("--dir","-d",help="Directory with wav and csv files", default="./data/")
     parser.add_argument("--batch-size","-bs",help="Batch Size", default=1, type=int)
+    parser.add_argument("--learning-rate","-lr",help="Learning rate", default=0.001, type=float)
     parser.add_argument("--num_workers","-nw",help="Number of workers to use in the Dataloader", default=2, type=int)
     parser.add_argument("--fsl-arch",help="The Few-shot architecture to use", default="relation-net", choices=['relation-net', 'proto-net'])
     parser.add_argument("--backbone-arch",help="The Backbone architecture to use", default="resnet18", choices=['resnet18', 'resnet34', 'audionet'])
@@ -328,6 +330,7 @@ if __name__=="__main__":
     parser.add_argument("--num_eval_tasks","-et",help="Number of tasks to sample for evaluation/test", default=5, type=int)
     parser.add_argument("--num_epochs","-e",help="Number of epochs", default=10, type=int)
     parser.add_argument("--augmentation", "-a", help="The data augmentation to use", default="none", choices=['spec', 'mixup', 'none'])
+    parser.add_argument("--is_dev_run", help="Use this during development to train only for one batch", action='store_true')
     
     args=parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -345,19 +348,23 @@ if __name__=="__main__":
         num_eval_tasks=args.num_eval_tasks,
         num_epochs=args.num_epochs,
         augmentation=args.augmentation,
+        backbone_arch=args.backbone_arch,
+        fsl_arch=args.fsl_arch,
+        dir=args.dir,
+        is_dev_run=args.is_dev_run,
     )
 
-    Dataloaders = experiment.dataloaders(args.dir)
+    # Dataloaders = experiment.dataloaders(args.dir)
     
     
-    model = get_model(pretrained=False, backbone_arch=args.backbone_arch, fsl_arch = args.fsl_arch)
-    model = model.to(device)
+    # model = get_model(pretrained=False, backbone_arch=args.backbone_arch, fsl_arch = args.fsl_arch)
+    # model = model.to(device)
     
-    experiment.train(model, Dataloaders)
+    experiment.train()
 
     print('Finished Training..')
-    PATH = os.path.join(experiment.MODEL_DIR,"VGGM_F.pth")
-    torch.save(model.state_dict(), PATH)
-    model.eval()
+    # PATH = os.path.join(experiment.MODEL_DIR,"VGGM_F.pth")
+    # torch.save(model.state_dict(), PATH)
+    # model.eval()
     print('Running test...')
-    acc1=experiment.evaluate(model, Dataloaders['test'])
+    experiment.evaluate()
