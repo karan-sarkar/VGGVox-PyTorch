@@ -216,7 +216,7 @@ class Experiment(object):
         )
         
         trainer.logger._default_hp_metric = None
-        trainer.fit(model=self.model, train_dataloaders=self.Dataloaders['train'], val_dataloaders=self.Dataloaders['va'])
+        trainer.fit(model=self.model, train_dataloaders=self.Dataloaders['train'], val_dataloaders=self.Dataloaders['val'])
         print(f'The best model is stored at {trainer.checkpoint_callback.best_model_path}')
     
     def _get_transforms(self):
