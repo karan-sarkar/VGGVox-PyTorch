@@ -5,3 +5,4 @@ data/
 models/
 .python-version
 .vscode/
+lightning_logs/
