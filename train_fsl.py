@@ -113,7 +113,16 @@ class ExpandChannels(nn.Module):
         shape = list(x.shape)
         shape[1] = self.out_channels
         return x.expand(*shape)
-    
+
+class MySampler(TaskSampler):
+    def __init__(
+        self, dataset, n_way: int=1, n_shot: int=1, n_query: int=1, n_tasks: int=1, batch_size = 1,drop_last=False
+    ):
+        super().__init__(dataset, n_way, n_shot, n_query, n_tasks)
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        
+
 class RelationNetworksMixup(RelationNetworks):
     
     # We need to override the compute loss method to accept one hot encoded tensors as well as normal tensors.
@@ -214,6 +223,7 @@ class Experiment(object):
                 LearningRateMonitor("epoch"),
             ],
             fast_dev_run=self.is_dev_run,
+            replace_sampler_ddp=False
         )
         
         trainer.logger._default_hp_metric = None
@@ -270,9 +280,9 @@ class Experiment(object):
             "test":AudioDataset(test_F, data_dir, is_train=False)
         }
         samplers ={
-            "train":TaskSampler(Datasets['train'], n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_TRAINING_TASKS),
-            "val":[TaskSampler(i, n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_VALIDATION_TASKS) for i in Datasets['val']],
-            "test":TaskSampler(Datasets['test'], n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_EVALUATION_TASKS),
+            "train":MySampler(Datasets['train'], n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_TRAINING_TASKS, batch_size=self.B_SIZE),
+            "val":[MySampler(i, n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_VALIDATION_TASKS, batch_size=self.B_SIZE) for i in Datasets['val']],
+            "test":MySampler(Datasets['test'], n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_EVALUATION_TASKS, batch_size = self.B_SIZE),
         }
         # print(samplers['test'].items_per_label)
  
