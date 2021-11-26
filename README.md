@@ -30,6 +30,9 @@ https://openaccess.thecvf.com/content_cvpr_2018/papers/Sung_Learning_to_Compare_
 Prototypical Networks for Few-shot Learning
 https://arxiv.org/pdf/1703.05175.pdf
 
+Few-shot speaker recognition
+https://arxiv.org/pdf/1904.08775.pdf
+
 
 # VGGVox-PyTorch
 Implementing VGGVox for VoxCeleb1 dataset in PyTorch.
