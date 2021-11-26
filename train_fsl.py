@@ -55,7 +55,7 @@ class FSLModel(pl.LightningModule):
         scheduler=lr_scheduler.StepLR(optimizer, step_size=self.hparams.lr_step_size, gamma=self.hparams.lr_gamma)
         return [optimizer], [scheduler]
         
-    def training_step(self, batch):
+    def training_step(self, batch, batch_idx):
         support_images, support_labels, query_images, query_labels, class_ids = batch
         self.model.process_support_set(support_images, support_labels)
         QUERY_BATCH_SIZE = query_images.shape[0]
@@ -85,14 +85,14 @@ class FSLModel(pl.LightningModule):
         self.model.process_support_set(support_images, support_labels)
         return self.model(query_images)
         
-    def validation_step(self, batch):
+    def validation_step(self, batch, batch_idx):
         support_images, support_labels, query_images, query_labels, class_ids = batch
         outputs = self.evaluate(support_images, support_labels, query_images, query_labels)
         self.accuracy(outputs, query_labels)
         self.log('val_acc', self.accuracy)
         return self.model.compute_loss(outputs, query_labels)
         
-    def test_step(self, batch):
+    def test_step(self, batch, batch_idx):
         support_images, support_labels, query_images, query_labels, class_ids = batch
         outputs = self.evaluate(support_images, support_labels, query_images, query_labels)
         self.accuracy(outputs, query_labels)
