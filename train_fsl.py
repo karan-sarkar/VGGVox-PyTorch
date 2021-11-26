@@ -76,7 +76,7 @@ class FSLModel(pl.LightningModule):
         outputs = self.model(query_images)
         
         self.accuracy(outputs[:QUERY_BATCH_SIZE], query_labels)
-        self.log('train_acc', self.accuracy)
+        self.log('train_acc', self.accuracy, prog_bar=True)
         
         loss = self.model.compute_loss(outputs, query_labels_hot.to(torch.float))
         return loss
@@ -89,7 +89,7 @@ class FSLModel(pl.LightningModule):
         support_images, support_labels, query_images, query_labels, class_ids = batch
         outputs = self.evaluate(support_images, support_labels, query_images, query_labels)
         self.accuracy(outputs, query_labels)
-        self.log('val_acc', self.accuracy)
+        self.log('val_acc', self.accuracy, prog_bar=True)
         return self.model.compute_loss(outputs, query_labels)
         
     def test_step(self, batch, batch_idx):
