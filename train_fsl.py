@@ -1,3 +1,4 @@
+import random
 import argparse
 import os
 import sys
@@ -238,19 +239,35 @@ class Experiment(object):
         return df_F
     
     def dataloaders(self, data_dir):
-        df_meta=pd.read_csv(os.path.join(self.LOCAL_DATA_DIR, "vox1_meta.csv"),sep="\t")
+        # df_meta=pd.read_csv(os.path.join(self.LOCAL_DATA_DIR, "vox1_meta.csv"),sep="\t")
+        # use a constant seed for reproducible splits
+        SPLIT_SEED = 42
+        
         df_F=pd.read_csv(os.path.join(self.LOCAL_DATA_DIR, "iden_split.txt"), sep=" ", names=["Set","Path"] )
-        val_F=pd.read_pickle(os.path.join(self.LOCAL_DATA_DIR, "val.pkl"))
         df_F=self.ppdf(df_F)
-        val_F=self.ppdf(val_F)
+        # filter out unavailable classes . This occurs when we are working with a test subset
         wav_folders = os.listdir(os.path.join(data_dir, 'wav'))
         wav_folders = [float(f.split("/")[0].replace("id","")) for f in wav_folders if os.path.isdir(os.path.join(data_dir, 'wav', f))]
         df_F = df_F[df_F.Label.map(lambda l: l in wav_folders)]
-        val_F = val_F[val_F.Label.map(lambda l: l in wav_folders)]
+        
+        zlist = pd.Series(pd.unique(df_F.Label)).sample(frac = 1, random_state=SPLIT_SEED).reset_index(drop=True)
+        
+        ds_len = len(zlist)
+        
+        split_lens = [int(ds_len * 0.7), int(ds_len * 0.2)]
+        
+        train_classes = zlist.iloc[:split_lens[0]]
+        val_classes = zlist.iloc[split_lens[0]:split_lens[0]+split_lens[1]]
+        test_classes = zlist.iloc[split_lens[0]+split_lens[1]:]
+        
+        train_F = df_F[df_F.Label.isin(train_classes)]
+        val_F = df_F[df_F.Label.isin(val_classes)]
+        test_F = df_F[df_F.Label.isin(test_classes)]
+        
         Datasets={
-            "train":AudioDataset(df_F[df_F['Set']==1], data_dir, data_transforms=self._get_transforms()),
-            "val":[AudioDataset(val_F[val_F['lengths']==i], data_dir, is_train=False) for i in range(300,1100,100)],
-            "test":AudioDataset(df_F[df_F['Set']==3], data_dir, is_train=False)
+            "train":AudioDataset(train_F, data_dir, data_transforms=self._get_transforms()),
+            "val":[AudioDataset(val_F, data_dir, is_train=False)],
+            "test":AudioDataset(test_F, data_dir, is_train=False)
         }
         samplers ={
             "train":TaskSampler(Datasets['train'], n_way=self.N_WAY, n_shot=self.N_SHOT, n_query=self.N_QUERY, n_tasks=self.N_TRAINING_TASKS),
