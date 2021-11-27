@@ -59,6 +59,7 @@ def get_flat_grid_locations(image_height, image_width, device):
 
 def create_dense_flows(flattened_flows, batch_size, image_height, image_width):
     # possibly .view
+    flattened_flows = flattened_flows.expand(batch_size, -1, -1)
     return torch.reshape(flattened_flows, [batch_size, image_height, image_width, 2])
 
 
@@ -355,13 +356,14 @@ class SpectrogramToDB(object):
         self.db_multiplier = np.log10(np.maximum(self.amin, self.ref_value))
 
     def __call__(self, spec):
+        N = spec.shape[0]
         # numerically stable implementation from librosa
         # https://librosa.github.io/librosa/_modules/librosa/core/spectrum.html
         spec_db = self.multiplier * torch.log10(torch.clamp(spec, min=self.amin))
         spec_db -= self.multiplier * self.db_multiplier
 
         if self.top_db is not None:
-            spec_db = torch.max(spec_db, spec_db.new_full((1,), spec_db.max() - self.top_db))
+            spec_db = torch.max(spec_db, spec_db.new_full((N,), spec_db.max(dim=0)[0] - self.top_db))
         return spec_db
 
 
@@ -408,42 +410,52 @@ class SpecAugment(torch.nn.Module):
     def freq_mask(self, spec):
         cloned = spec.clone()
         num_mel_channels = cloned.shape[1]
-
-        for i in range(0, self.freq_masks):        
+        N = spec.shape[0]
+        for i in range(0, self.freq_masks):
             f = random.randrange(0, self.F)
-            f_zero = random.randrange(0, num_mel_channels - f)
-
             # avoids randrange error if values are equal and range is empty
-            if (f_zero == f_zero + f): return cloned
+            if (f == 0): return cloned
+            
+            f_zero = num_mel_channels - torch.randint(0, f, (N,))
 
-            mask_end = random.randrange(f_zero, f_zero + f) 
-            if (self.freq_zero): cloned[0][f_zero:mask_end] = 0
-            else: cloned[0][f_zero:mask_end] = cloned.mean()
+            mask_end = f_zero + f
+            update_val = torch.zeros(N) if self.freq_zero else cloned.view(N, -1).mean(1)
+            for j in range(N):
+                cloned[j, f_zero[j]:mask_end[j]] = update_val[j]
 
         return cloned
    
     def time_mask(self, spec):
         cloned = spec.clone()
         len_spectro = cloned.shape[2]
-
+        N = spec.shape[0]
         for i in range(0, self.time_masks):
             t = random.randrange(0, self.T)
-            t_zero = random.randrange(0, len_spectro - t)
-
             # avoids randrange error if values are equal and range is empty
-            if (t_zero == t_zero + t): return cloned
+            if (t == 0): return cloned
 
-            mask_end = random.randrange(t_zero, t_zero + t)
-            if (self.time_zero): cloned[0][:,t_zero:mask_end] = 0
-            else: cloned[0][:,t_zero:mask_end] = cloned.mean()
+            t_zero = len_spectro - torch.randint(0, t, (N,))
+
+            mask_end = t_zero + t
+            update_val = torch.zeros(N) if self.time_zero else cloned.view(N, -1).mean(1)
+            for j in range(N):
+                cloned[j, :, t_zero[j]:mask_end[j]] = update_val[j]
         return cloned
     
     def forward(self, spec):
-        spec = spec.cuda()
-        spec = torch.reshape(spec, (1, 512, 300))
+        N, C, H, W = spec.shape
+        # The rest of the module requires a 3 dim tensor
+        spec = spec.view(-1, H, W)
+        batch_size = N * C
+        # spec = torch.reshape(spec, (1, 512, 300))
         if self.to_mel:
-            spec = torch.reshape(spec, (1, -1))
+            # N batches of samples
+            spec = torch.reshape(spec, (batch_size, -1))
             mel = transforms.MelSpectrogram(sample_rate=16000, n_mels=128, n_fft=1024, win_length=512, hop_length=256, 
                                     f_min=0, f_max=8000, pad=0,)(spec)
             spec = SpectrogramToDB(stype='magnitude', top_db=8000)(mel)
-        return self.time_mask(self.freq_mask(self.time_warp(spec)))
+        # spec = self.time_warp(spec)
+        spec = self.freq_mask(spec)
+        spec = self.time_mask(spec)
+        spec = spec.view(N, C, H, W)
+        return spec

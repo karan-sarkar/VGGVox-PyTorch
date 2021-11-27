@@ -42,13 +42,16 @@ class FSLModel(pl.LightningModule):
                 lr_gamma=1/1.17,
                 apply_mixup: bool = False, 
                 mixup_alpha: float = 0.3, 
-                **kwargs: Any) -> None:
+                transforms = [],
+                **kwargs: Any
+    ) -> None:
         super().__init__(**kwargs)
         self.save_hyperparameters()
         self.model = model
         self.accuracy = Accuracy()
         self.apply_mixup = apply_mixup
         self.mixup_alpha = mixup_alpha
+        self.transforms = nn.Sequential(*transforms)
     
     def configure_optimizers(self):
         optimizer=SGD(self.model.parameters(), lr=self.hparams.lr, momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
@@ -73,6 +76,8 @@ class FSLModel(pl.LightningModule):
             # concatenate the original data with mixup data. This doubles the batch size
             query_images = torch.cat((query_images, query_images2), dim=0)
             query_labels_hot = torch.cat((query_labels_hot, query_labels2_hot), dim=0)
+        if self.transforms is not None:
+            query_images = self.transforms(query_images)
         outputs = self.model(query_images)
         
         self.accuracy(outputs[:QUERY_BATCH_SIZE], query_labels)
@@ -200,7 +205,7 @@ class Experiment(object):
         self.dir = dir
         self.is_dev_run = is_dev_run
         
-        self.model = self.get_model(pretrained=False, backbone_arch=self.backbone_arch, fsl_arch = self.fsl_arch)
+        self.model = self.get_model(pretrained=False, backbone_arch=self.backbone_arch, fsl_arch = self.fsl_arch, transforms=self._get_transforms())
         self.Dataloaders = self.dataloaders(self.dir)
 
     def evaluate(self):
@@ -275,7 +280,7 @@ class Experiment(object):
         test_F = df_F[df_F.Label.isin(test_classes)]
         
         Datasets={
-            "train":AudioDataset(train_F, data_dir, data_transforms=self._get_transforms()),
+            "train":AudioDataset(train_F, data_dir),
             "val":[AudioDataset(val_F, data_dir, is_train=False)],
             "test":AudioDataset(test_F, data_dir, is_train=False)
         }
@@ -287,9 +292,9 @@ class Experiment(object):
         # print(samplers['test'].items_per_label)
  
         Dataloaders={}
-        Dataloaders['train']=DataLoader(Datasets['train'],num_workers=self.NUM_WORKERS, batch_sampler=samplers['train'], collate_fn=samplers['train'].episodic_collate_fn)
-        Dataloaders['val']=[DataLoader(i, num_workers=self.NUM_WORKERS, batch_sampler = j, shuffle=False, collate_fn=j.episodic_collate_fn) for i, j in zip(Datasets['val'], samplers['val'])]
-        Dataloaders['test']=[DataLoader(Datasets['test'], num_workers=self.NUM_WORKERS, batch_sampler=samplers['test'], shuffle=False, collate_fn=samplers['test'].episodic_collate_fn)]
+        Dataloaders['train']=DataLoader(Datasets['train'],num_workers=self.NUM_WORKERS, batch_sampler=samplers['train'], collate_fn=samplers['train'].episodic_collate_fn, batch_size=self.B_SIZE)
+        Dataloaders['val']=[DataLoader(i, num_workers=self.NUM_WORKERS, batch_sampler = j, shuffle=False, collate_fn=j.episodic_collate_fn, batch_size=self.B_SIZE) for i, j in zip(Datasets['val'], samplers['val'])]
+        Dataloaders['test']=[DataLoader(Datasets['test'], num_workers=self.NUM_WORKERS, batch_sampler=samplers['test'], shuffle=False, collate_fn=samplers['test'].episodic_collate_fn, batch_size=self.B_SIZE)]
         return Dataloaders
     
     def get_model(
@@ -297,7 +302,8 @@ class Experiment(object):
         fsl_arch='relation-net',
         backbone_arch='resnet18',
         pretrained: bool =False,
-        num_ways = 10
+        num_ways = 10,
+        transforms = None
     ) -> AbstractMetaLearner:
         if backbone_arch == 'resnet18': 
             backbone = resnet18(pretrained)
@@ -331,7 +337,7 @@ class Experiment(object):
             model = PrototypicalNetworks(backbone)
         else:
             raise ValueError('Invalid FSL arch type')
-        model = FSLModel(model=model, apply_mixup=self.augmentation=='mixup', mixup_alpha=self.alpha)
+        model = FSLModel(model=model, apply_mixup=self.augmentation=='mixup', mixup_alpha=self.alpha, transforms=transforms)
         return model
 
 if __name__=="__main__":
