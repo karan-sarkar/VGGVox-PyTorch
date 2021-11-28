@@ -221,7 +221,7 @@ class Experiment(object):
         
     def get_exp_name(self):
         # Sets the name for tensorboard log folder
-        return f"{self.fsl_arch}_{self.backbone_arch}_{self.N_WAY}w_{self.N_SHOT}s"
+        return f"{self.fsl_arch}_{self.backbone_arch}_{self.augmentation}_{self.N_WAY}w_{self.N_SHOT}s"
 
     def evaluate(self):
         tb_logger = pl_loggers.TensorBoardLogger("lightning_logs/", name=self.get_exp_name())
