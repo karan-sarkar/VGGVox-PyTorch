@@ -24,6 +24,7 @@ from audionet import AudioNet
 
 sys.modules['easyfsl.utils'].compute_backbone_output_shape = __import__('relation_net_util').compute_backbone_output_shape
 import pytorch_lightning as pl
+from pytorch_lightning import loggers as pl_loggers
 from easyfsl.methods import (AbstractMetaLearner, PrototypicalNetworks,
                              RelationNetworks)
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -217,6 +218,10 @@ class Experiment(object):
         
         self.model = self.get_model(pretrained=False, backbone_arch=self.backbone_arch, fsl_arch = self.fsl_arch, transforms=self._get_transforms())
         self.Dataloaders = self.dataloaders(self.dir)
+        
+    def get_exp_name(self):
+        # Sets the name for tensorboard log folder
+        return f"{self.fsl_arch}_{self.backbone_arch}_{self.N_WAY}w_{self.N_SHOT}s"
 
     def evaluate(self):
         
@@ -230,7 +235,7 @@ class Experiment(object):
         trainer.test(model = self.model, dataloaders=self.Dataloaders['test'])
 
     def train(self):
-        
+        tb_logger = pl_loggers.TensorBoardLogger("lightning_logs/", name=self.get_exp_name())
         trainer = pl.Trainer(
             gpus = -1 if str(self.device) != 'cpu' else 0,
             max_epochs = self.N_EPOCHS,
@@ -238,6 +243,7 @@ class Experiment(object):
                 ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc", save_last=True),
                 LearningRateMonitor("epoch"),
             ],
+            logger=tb_logger,
             fast_dev_run=self.is_dev_run,
             replace_sampler_ddp=False,
             progress_bar_refresh_rate= 3
