@@ -224,10 +224,11 @@ class Experiment(object):
         return f"{self.fsl_arch}_{self.backbone_arch}_{self.N_WAY}w_{self.N_SHOT}s"
 
     def evaluate(self):
-        
+        tb_logger = pl_loggers.TensorBoardLogger("lightning_logs/", name=self.get_exp_name())
         trainer = pl.Trainer(
             gpus = -1 if str(self.device) != 'cpu' else 0,
             max_epochs = self.N_EPOCHS,
+            logger=tb_logger,
             fast_dev_run=self.is_dev_run,
             progress_bar_refresh_rate= 3
         )
