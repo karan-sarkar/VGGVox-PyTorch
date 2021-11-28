@@ -64,7 +64,10 @@ class FSLModel(pl.LightningModule):
         self.transforms = nn.Sequential(*transforms)
     
     def configure_optimizers(self):
-        optimizer=SGD(self.model.parameters(), lr=self.hparams.lr, momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+        if self.hparams.fsl_arch =='relation-net':
+            optimizer=Adam(self.model.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        else:
+            optimizer=SGD(self.model.parameters(), lr=self.hparams.lr, momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
         scheduler=lr_scheduler.StepLR(optimizer, step_size=self.hparams.lr_step_size, gamma=self.hparams.lr_gamma)
         return [optimizer], [scheduler]
         
@@ -371,6 +374,7 @@ class Experiment(object):
                 augmentation=self.augmentation,
                 backbone_arch=self.backbone_arch,
                 fsl_arch=self.fsl_arch,
+                lr=self.LR,
         )
         return model
 
@@ -418,6 +422,7 @@ if __name__=="__main__":
         backbone_arch=args.backbone_arch,
         fsl_arch=args.fsl_arch,
         dir=args.dir,
+        lr=args.learning_rate,
         is_dev_run=args.is_dev_run,
     )
 
