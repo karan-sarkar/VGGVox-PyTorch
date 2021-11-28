@@ -235,7 +235,7 @@ class Experiment(object):
             gpus = -1 if str(self.device) != 'cpu' else 0,
             max_epochs = self.N_EPOCHS,
             callbacks=[
-                ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc"),
+                ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc", save_last=True),
                 LearningRateMonitor("epoch"),
             ],
             fast_dev_run=self.is_dev_run,
