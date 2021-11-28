@@ -317,7 +317,7 @@ def interpolate_bilinear(grid,
     # code would be made simpler by using array_ops.gather_nd.
     def gather(y_coords, x_coords, name):
         linear_coordinates = batch_offsets + y_coords * width + x_coords
-        gathered_values = torch.gather(flattened_grid.t(), 1, linear_coordinates)
+        gathered_values = torch.gather(flattened_grid.t(), 1, linear_coordinates.reshape(1, -1))
         return torch.reshape(gathered_values, [batch_size, num_queries, channels])
 
     # grab the pixel values in the 4 corners around each query point
@@ -416,7 +416,7 @@ class SpecAugment(torch.nn.Module):
             # avoids randrange error if values are equal and range is empty
             if (f == 0): return cloned
             
-            f_zero = num_mel_channels - torch.randint(0, f, (N,))
+            f_zero = num_mel_channels - torch.randint(f, num_mel_channels, (N,))
 
             mask_end = f_zero + f
             update_val = torch.zeros(N) if self.freq_zero else cloned.view(N, -1).mean(1)
@@ -434,7 +434,7 @@ class SpecAugment(torch.nn.Module):
             # avoids randrange error if values are equal and range is empty
             if (t == 0): return cloned
 
-            t_zero = len_spectro - torch.randint(0, t, (N,))
+            t_zero = len_spectro -  torch.randint(t, len_spectro, (N,))
 
             mask_end = t_zero + t
             update_val = torch.zeros(N) if self.time_zero else cloned.view(N, -1).mean(1)
@@ -454,7 +454,7 @@ class SpecAugment(torch.nn.Module):
             mel = transforms.MelSpectrogram(sample_rate=16000, n_mels=128, n_fft=1024, win_length=512, hop_length=256, 
                                     f_min=0, f_max=8000, pad=0,)(spec)
             spec = SpectrogramToDB(stype='magnitude', top_db=8000)(mel)
-        # spec = self.time_warp(spec)
+        spec = self.time_warp(spec)
         spec = self.freq_mask(spec)
         spec = self.time_mask(spec)
         spec = spec.view(N, C, H, W)
