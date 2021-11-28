@@ -24,6 +24,7 @@ from audionet import AudioNet
 
 sys.modules['easyfsl.utils'].compute_backbone_output_shape = __import__('relation_net_util').compute_backbone_output_shape
 import pytorch_lightning as pl
+from pytorch_lightning import loggers as pl_loggers
 from easyfsl.methods import (AbstractMetaLearner, PrototypicalNetworks,
                              RelationNetworks)
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
@@ -55,7 +56,7 @@ class FSLModel(pl.LightningModule):
                 **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["transforms", "model"])
         self.model = model
         self.accuracy = Accuracy()
         self.apply_mixup = apply_mixup
@@ -63,7 +64,10 @@ class FSLModel(pl.LightningModule):
         self.transforms = nn.Sequential(*transforms)
     
     def configure_optimizers(self):
-        optimizer=SGD(self.model.parameters(), lr=self.hparams.lr, momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
+        if self.hparams.fsl_arch =='relation-net':
+            optimizer=Adam(self.model.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        else:
+            optimizer=SGD(self.model.parameters(), lr=self.hparams.lr, momentum=self.hparams.momentum, weight_decay=self.hparams.weight_decay)
         scheduler=lr_scheduler.StepLR(optimizer, step_size=self.hparams.lr_step_size, gamma=self.hparams.lr_gamma)
         return [optimizer], [scheduler]
         
@@ -217,12 +221,17 @@ class Experiment(object):
         
         self.model = self.get_model(pretrained=False, backbone_arch=self.backbone_arch, fsl_arch = self.fsl_arch, transforms=self._get_transforms())
         self.Dataloaders = self.dataloaders(self.dir)
+        
+    def get_exp_name(self):
+        # Sets the name for tensorboard log folder
+        return f"{self.fsl_arch}_{self.backbone_arch}_{self.augmentation}_{self.N_WAY}w_{self.N_SHOT}s"
 
     def evaluate(self):
-        
+        tb_logger = pl_loggers.TensorBoardLogger("lightning_logs/", name=self.get_exp_name())
         trainer = pl.Trainer(
             gpus = -1 if str(self.device) != 'cpu' else 0,
             max_epochs = self.N_EPOCHS,
+            logger=tb_logger,
             fast_dev_run=self.is_dev_run,
             progress_bar_refresh_rate= 3
         )
@@ -230,14 +239,15 @@ class Experiment(object):
         trainer.test(model = self.model, dataloaders=self.Dataloaders['test'])
 
     def train(self):
-        
+        tb_logger = pl_loggers.TensorBoardLogger("lightning_logs/", name=self.get_exp_name())
         trainer = pl.Trainer(
             gpus = -1 if str(self.device) != 'cpu' else 0,
             max_epochs = self.N_EPOCHS,
             callbacks=[
-                ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc"),
+                ModelCheckpoint(save_weights_only=True, mode="max", monitor="val_acc", save_last=True),
                 LearningRateMonitor("epoch"),
             ],
+            logger=tb_logger,
             fast_dev_run=self.is_dev_run,
             replace_sampler_ddp=False,
             progress_bar_refresh_rate= 3
@@ -280,8 +290,13 @@ class Experiment(object):
         zlist = pd.Series(pd.unique(df_F.Label)).sample(frac = 1, random_state=SPLIT_SEED).reset_index(drop=True)
         
         ds_len = len(zlist)
-        
-        split_lens = [int(ds_len * 0.7), int(ds_len * 0.2)]
+        if ds_len * 0.1 < 20:
+            print('The dataset contains very few classes: , splitting test/val/test using ratio : 0.5|0.3|0.2')
+            split_lens = [int(ds_len * 0.5), int(ds_len * 0.2)]
+        else:
+            print('Splitting test/val/test using ratio : 0.7|0.2|0.1') 
+            split_lens = [int(ds_len * 0.7), int(ds_len * 0.2)]
+            
         
         train_classes = zlist.iloc[:split_lens[0]]
         val_classes = zlist.iloc[split_lens[0]:split_lens[0]+split_lens[1]]
@@ -359,6 +374,7 @@ class Experiment(object):
                 augmentation=self.augmentation,
                 backbone_arch=self.backbone_arch,
                 fsl_arch=self.fsl_arch,
+                lr=self.LR,
         )
         return model
 
@@ -406,6 +422,7 @@ if __name__=="__main__":
         backbone_arch=args.backbone_arch,
         fsl_arch=args.fsl_arch,
         dir=args.dir,
+        lr=args.learning_rate,
         is_dev_run=args.is_dev_run,
     )
 
