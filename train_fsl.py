@@ -84,6 +84,7 @@ class FSLModel(pl.LightningModule):
         self.log('train_acc', self.accuracy, prog_bar=True, batch_size=QUERY_BATCH_SIZE)
         
         loss = self.model.compute_loss(outputs, query_labels_hot.to(torch.float))
+        self.log('train_loss', loss, batch_size=QUERY_BATCH_SIZE)
         return loss
     
     def evaluate(self, support_images, support_labels, query_images, query_labels):
@@ -214,6 +215,7 @@ class Experiment(object):
             gpus = -1 if str(self.device) != 'cpu' else 0,
             max_epochs = self.N_EPOCHS,
             fast_dev_run=self.is_dev_run,
+            log_every_n_steps=self.N_EVALUATION_TASKS//5,
         )
         trainer.logger._default_hp_metric = None
         trainer.test(model = self.model, dataloaders=self.Dataloaders['test'])
@@ -228,7 +230,8 @@ class Experiment(object):
                 LearningRateMonitor("epoch"),
             ],
             fast_dev_run=self.is_dev_run,
-            replace_sampler_ddp=False
+            replace_sampler_ddp=False,
+            log_every_n_steps=self.N_TRAINING_TASKS//5
         )
         
         trainer.logger._default_hp_metric = None
