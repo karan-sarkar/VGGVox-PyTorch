@@ -55,23 +55,7 @@ class FSLModel(pl.LightningModule):
                 **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
-        self.save_hyperparameters({
-            "lr": lr,
-            "momentum": momentum,
-            "weight_decay": weight_decay,
-            "lr_step_size": lr_step_size,
-            "lr_gamma": lr_gamma,
-            "mixup_alpha": mixup_alpha,
-            "num_way": num_way,
-            "num_shot": num_shot,
-            "num_query": num_query,
-            "num_train_tasks": num_train_tasks,
-            "num_eval_tasks": num_eval_tasks,
-            "num_val_tasks": num_val_tasks,
-            "augmentation": augmentation,
-            "backbone_arch": backbone_arch,
-            "fsl_arch": fsl_arch,
-        })
+        self.save_hyperparameters()
         self.model = model
         self.accuracy = Accuracy()
         self.apply_mixup = apply_mixup
