@@ -280,8 +280,13 @@ class Experiment(object):
         zlist = pd.Series(pd.unique(df_F.Label)).sample(frac = 1, random_state=SPLIT_SEED).reset_index(drop=True)
         
         ds_len = len(zlist)
-        
-        split_lens = [int(ds_len * 0.7), int(ds_len * 0.2)]
+        if ds_len * 0.1 < 20:
+            print('The dataset contains very few classes: , splitting test/val/test using ratio : 0.5|0.3|0.2')
+            split_lens = [int(ds_len * 0.5), int(ds_len * 0.2)]
+        else:
+            print('Splitting test/val/test using ratio : 0.7|0.2|0.1') 
+            split_lens = [int(ds_len * 0.7), int(ds_len * 0.2)]
+            
         
         train_classes = zlist.iloc[:split_lens[0]]
         val_classes = zlist.iloc[split_lens[0]:split_lens[0]+split_lens[1]]
