@@ -240,9 +240,9 @@ class Experiment(object):
             gpus = -1 if str(self.device) != 'cpu' else 0,
             max_epochs = self.N_EPOCHS,
             fast_dev_run=self.is_dev_run,
-            log_every_n_steps=self.N_EVALUATION_TASKS//5,
+            progress_bar_refresh_rate= 3
         )
-        trainer.logger._default_hp_metric = None
+        # trainer.logger._default_hp_metric = None
         trainer.test(model = self.model, dataloaders=self.Dataloaders['test'])
 
     def train(self):
@@ -256,7 +256,7 @@ class Experiment(object):
             ],
             fast_dev_run=self.is_dev_run,
             replace_sampler_ddp=False,
-            log_every_n_steps=self.N_TRAINING_TASKS//5
+            progress_bar_refresh_rate= 3
         )
         
         # trainer.logger._default_hp_metric = None
