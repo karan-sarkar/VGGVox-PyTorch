@@ -56,7 +56,7 @@ class FSLModel(pl.LightningModule):
                 **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["transforms"])
         self.model = model
         self.accuracy = Accuracy()
         self.apply_mixup = apply_mixup
