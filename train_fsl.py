@@ -43,10 +43,35 @@ class FSLModel(pl.LightningModule):
                 apply_mixup: bool = False, 
                 mixup_alpha: float = 0.3, 
                 transforms = [],
+                num_way = 20,
+                num_shot = 1,
+                num_query = 3,
+                num_train_tasks = 100,
+                num_eval_tasks = 100,
+                num_val_tasks = 100,
+                augmentation='none',
+                backbone_arch='resnet18',
+                fsl_arch='relation-net',
                 **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
-        self.save_hyperparameters()
+        self.save_hyperparameters({
+            "lr": lr,
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+            "lr_step_size": lr_step_size,
+            "lr_gamma": lr_gamma,
+            "mixup_alpha": mixup_alpha,
+            "num_way": num_way,
+            "num_shot": num_shot,
+            "num_query": num_query,
+            "num_train_tasks": num_train_tasks,
+            "num_eval_tasks": num_eval_tasks,
+            "num_val_tasks": num_val_tasks,
+            "augmentation": augmentation,
+            "backbone_arch": backbone_arch,
+            "fsl_arch": fsl_arch,
+        })
         self.model = model
         self.accuracy = Accuracy()
         self.apply_mixup = apply_mixup
@@ -234,7 +259,7 @@ class Experiment(object):
             log_every_n_steps=self.N_TRAINING_TASKS//5
         )
         
-        trainer.logger._default_hp_metric = None
+        # trainer.logger._default_hp_metric = None
         trainer.fit(model=self.model, train_dataloaders=self.Dataloaders['train'], val_dataloaders=self.Dataloaders['val'])
         print(f'The best model is stored at {trainer.checkpoint_callback.best_model_path}')
     
@@ -340,7 +365,17 @@ class Experiment(object):
             model = PrototypicalNetworks(backbone)
         else:
             raise ValueError('Invalid FSL arch type')
-        model = FSLModel(model=model, apply_mixup=self.augmentation=='mixup', mixup_alpha=self.alpha, transforms=transforms)
+        model = FSLModel(model=model, apply_mixup=self.augmentation=='mixup', mixup_alpha=self.alpha, transforms=transforms,
+                num_way=self.N_WAY,
+                num_shot=self.N_SHOT,
+                num_query=self.N_QUERY,
+                num_train_tasks=self.N_TRAINING_TASKS,
+                num_eval_tasks=self.N_EVALUATION_TASKS,
+                num_val_tasks=self.N_VALIDATION_TASKS,
+                augmentation=self.augmentation,
+                backbone_arch=self.backbone_arch,
+                fsl_arch=self.fsl_arch,
+        )
         return model
 
 if __name__=="__main__":
