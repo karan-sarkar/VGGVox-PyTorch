@@ -194,6 +194,12 @@ class Experiment(object):
                 alpha=0.2,
                 dir='./data',
                 is_dev_run=False,
+                spec_warp_dist=50,
+                spec_freq_mask_width=30,
+                spec_time_mask_width=40,
+                spec_freq_mask_num=2,
+                spec_time_mask_num=2,
+                spec_time_warp_enable=True,
         ) -> None:
         super().__init__()
         self.LOCAL_DATA_DIR=os.path.join(os.path.dirname(__file__), "data")
@@ -218,6 +224,12 @@ class Experiment(object):
         self.alpha = alpha
         self.dir = dir
         self.is_dev_run = is_dev_run
+        self.spec_warp_dist=spec_warp_dist
+        self.spec_freq_mask_width=spec_freq_mask_width
+        self.spec_time_mask_width=spec_time_mask_width
+        self.spec_freq_mask_num=spec_freq_mask_num
+        self.spec_time_mask_num=spec_time_mask_num
+        self.spec_time_warp_enable=spec_time_warp_enable
         
         self.model = self.get_model(pretrained=False, backbone_arch=self.backbone_arch, fsl_arch = self.fsl_arch, transforms=self._get_transforms())
         self.Dataloaders = self.dataloaders(self.dir)
@@ -262,7 +274,16 @@ class Experiment(object):
         if self.augmentation == 'none':
             pass
         elif self.augmentation == 'spec':
-            ts.append(SpecAugment(W=50, F=30, T=40, freq_masks=2, time_masks=2, freq_zero=False, time_zero=False, to_mel=False),)
+            ts.append(SpecAugment(
+                W=self.spec_warp_dist, 
+                F=self.spec_freq_mask_width, 
+                T=self.spec_time_mask_width, 
+                freq_masks=self.spec_freq_mask_num, 
+                time_masks=self.spec_time_mask_num, 
+                time_warp_enable=self.spec_time_warp_enable,
+                freq_zero=False, 
+                time_zero=False, 
+                to_mel=False),)
         elif self.augmentation == 'mixup':
             pass
         print('ts', ts)
@@ -402,6 +423,12 @@ if __name__=="__main__":
     parser.add_argument("--num_epochs","-e",help="Number of epochs", default=10, type=int)
     parser.add_argument("--augmentation", "-a", help="The data augmentation to use", default="none", choices=['spec', 'mixup', 'none'])
     parser.add_argument("--is_dev_run", help="Use this during development to train only for one batch", action='store_true')
+    parser.add_argument("--spec_warp_dist", help="The distance on the time axis to warp", default=50, type=int)
+    parser.add_argument("--spec_freq_mask_width", help="The width of each freq mask", default=30, type=int)
+    parser.add_argument("--spec_time_mask_width", help="The width of each time mask", default=40, type=int)
+    parser.add_argument("--spec_freq_mask_num", help="The number of freq masks", default=2, type=int)
+    parser.add_argument("--spec_time_mask_num", help="The number of time masks", default=2, type=int)
+    parser.add_argument("--spec_time_warp_disable", dest="spec_time_warp_enable", help="Disable time warping", action='store_false')
     
     args=parser.parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -424,6 +451,12 @@ if __name__=="__main__":
         dir=args.dir,
         lr=args.learning_rate,
         is_dev_run=args.is_dev_run,
+        spec_warp_dist=args.spec_warp_dist,
+        spec_freq_mask_width=args.spec_freq_mask_width,
+        spec_time_mask_width=args.spec_time_mask_width,
+        spec_freq_mask_num=args.spec_freq_mask_num,
+        spec_time_mask_num=args.spec_time_mask_num,
+        spec_time_warp_enable=args.spec_time_warp_enable,
     )
 
     # Dataloaders = experiment.dataloaders(args.dir)

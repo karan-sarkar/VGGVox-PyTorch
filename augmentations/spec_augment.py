@@ -369,7 +369,7 @@ class SpectrogramToDB(object):
 
 class SpecAugment(torch.nn.Module):
     
-    def __init__(self, W=50, F=30, T=40, freq_masks=1, time_masks=1, freq_zero=False, time_zero=False, to_mel=False):
+    def __init__(self, W=50, F=30, T=40, freq_masks=1, time_masks=1, freq_zero=False, time_zero=False, to_mel=False, time_warp_enable=True):
         super().__init__()
         
         self.W = W
@@ -380,6 +380,7 @@ class SpecAugment(torch.nn.Module):
         self.freq_zero = freq_zero
         self.time_zero = time_zero
         self.to_mel = to_mel
+        self.time_warp_enable = time_warp_enable
     
 
     def time_warp(self, spec):
@@ -454,7 +455,8 @@ class SpecAugment(torch.nn.Module):
             mel = transforms.MelSpectrogram(sample_rate=16000, n_mels=128, n_fft=1024, win_length=512, hop_length=256, 
                                     f_min=0, f_max=8000, pad=0,)(spec)
             spec = SpectrogramToDB(stype='magnitude', top_db=8000)(mel)
-        spec = self.time_warp(spec)
+        if self.time_warp_enable:
+            spec = self.time_warp(spec)
         spec = self.freq_mask(spec)
         spec = self.time_mask(spec)
         spec = spec.view(N, C, H, W)
